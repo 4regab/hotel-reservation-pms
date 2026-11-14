@@ -38,7 +38,8 @@ jobs:
 
   e2e:
     name: End-to-end, concurrency and payment tests on SQL Server 2025
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, which has no Microsoft ODBC driver preinstalled.
+    runs-on: ubuntu-24.04
     services:
       mssql:
         image: mcr.microsoft.com/mssql/server:2025-latest
@@ -58,6 +59,18 @@ jobs:
       RUN_DIR: ${{ github.workspace }}/.run
     steps:
       - uses: actions/checkout@v4
+      - name: Install Microsoft ODBC Driver 18 for SQL Server (pdo_sqlsrv needs it to connect)
+        run: |
+          if ! odbcinst -q -d 2>/dev/null | grep -q "ODBC Driver 18 for SQL Server"; then
+            # Add Microsoft's package list only if the runner does not already have it (two copies make apt fail).
+            if ! grep -rqs "packages.microsoft.com/ubuntu/24.04/prod" /etc/apt/sources.list.d/; then
+              curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+              curl -fsSL https://packages.microsoft.com/config/ubuntu/24.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+            fi
+            sudo apt-get update
+            sudo ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc
+          fi
+          odbcinst -q -d
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
