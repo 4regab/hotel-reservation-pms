@@ -1,0 +1,13 @@
+{
+  "name": "harborlight-portal-assets",
+  "private": true,
+  "description": "Build-time only: compiles Tailwind CSS. The compiled file is committed, so the site needs no Node to run.",
+  "scripts": {
+    "build:css": "tailwindcss -i portal/assets/app.src.css -o portal/public/assets/app.css --minify",
+    "watch:css": "tailwindcss -i portal/assets/app.src.css -o portal/public/assets/app.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.5",
+    "tailwindcss": "4.3.5"
+  }
+}

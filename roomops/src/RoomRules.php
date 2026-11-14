@@ -14,7 +14,7 @@ final class RoomRules
      */
     private const MANUAL = [
         'DIRTY'          => ['CLEANING', 'OUT_OF_SERVICE'],
-        'CLEANING'       => ['READY', 'DIRTY'],
+        'CLEANING'       => ['DIRTY'],   // READY only through inspection of a finished cleaning task
         'READY'          => ['DIRTY', 'OUT_OF_SERVICE'],
         'OUT_OF_SERVICE' => ['DIRTY'],
     ];

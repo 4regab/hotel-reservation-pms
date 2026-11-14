@@ -30,11 +30,11 @@ final class EventConsumer
         $apply = function () use ($e, $d): void {
             switch ($e['eventType']) {
                 case 'ReservationConfirmed':
-                    $this->job('EMAIL_CONFIRMATION', $d['reservationId']);
+                    Notifications::queue($this->pdo, 'EMAIL_CONFIRMATION', $d['reservationId']);
                     $this->report('confirmed', 1);
                     break;
                 case 'ReservationCancelled':
-                    $this->job('EMAIL_CANCELLATION', $d['reservationId']);
+                    Notifications::queue($this->pdo, 'EMAIL_CANCELLATION', $d['reservationId']);
                     $this->report('cancelled', 1);
                     break;
                 case 'PaymentCaptured':
@@ -42,6 +42,7 @@ final class EventConsumer
                     break;
                 case 'RefundCompleted':
                     $this->report('refunded_minor', (int) $d['amountMinor']);
+                    Notifications::queue($this->pdo, 'EMAIL_REFUND', $d['reservationId'], null, ['amountMinor' => (int) $d['amountMinor']]);
                     break;
                 case 'StayCheckedIn':
                     $this->report('check_ins', 1);
@@ -52,12 +53,6 @@ final class EventConsumer
             }
         };
         return [200, ['status' => Inbox::once($this->pdo, $e['eventId'], $apply) ? 'applied' : 'duplicate']];
-    }
-
-    private function job(string $type, string $reservationId): void
-    {
-        $this->pdo->prepare("INSERT INTO notification_job (job_id, type, reservation_id, status, attempts, created_at) VALUES (?, ?, ?, 'PENDING', 0, UTC_TIMESTAMP())")
-            ->execute([Uuid::v4(), $type, $reservationId]);
     }
 
     private function report(string $column, int $amount): void

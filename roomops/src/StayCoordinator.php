@@ -4,6 +4,8 @@ declare(strict_types=1);
 namespace RoomOps;
 
 use Lib\ApiException;
+use Lib\Audit;
+use Lib\Dates;
 use Lib\Outbox;
 use Lib\Peer;
 use Lib\Tx;
@@ -19,7 +21,7 @@ final class StayCoordinator
     {
     }
 
-    public function checkIn(array $user, array $b): array
+    public function checkIn(array $user, array $b, ?string $ip = null): array
     {
         $rid = $this->uuid($b['reservationId'] ?? null, 'reservationId');
         if (($b['identityVerified'] ?? false) !== true) {
@@ -33,7 +35,8 @@ final class StayCoordinator
         if ($res['status'] !== 'CONFIRMED') {
             throw new ApiException(409, 'RESERVATION_NOT_CONFIRMED', "Reservation is {$res['status']}");
         }
-        if ($res['guarantee'] !== 'PAY_AT_HOTEL') {
+        $override = $this->arrivalDate($user, $res, $rid, (string) ($b['overrideReason'] ?? ''));
+        if (!in_array($res['guarantee'], ['PAY_AT_HOTEL', 'OTA_PREPAID'], true)) {
             $folio = Peer::ok('roomops', 'billing', 'GET', "/internal/folios/{$rid}", $user);
             if ($folio['paidMinor'] - $folio['refundedMinor'] < $res['amountMinor']) {
                 throw new ApiException(409, 'PAYMENT_NOT_VERIFIED', 'No verified payment or approved pay-at-hotel guarantee');
@@ -48,7 +51,9 @@ final class StayCoordinator
             array_map(fn ($x) => $this->uuid($x, 'roomIds'), $wanted);
         }
 
-        return Tx::run($this->pdo, function () use ($user, $rid, $res, $qty, $wanted, $doc): array {
+        $queueStart = $this->queueStart($b['queueStartedAt'] ?? null);
+
+        return Tx::run($this->pdo, function () use ($user, $rid, $res, $qty, $wanted, $doc, $override, $queueStart, $ip): array {
             $ids = $wanted ?? $this->pickReadyRooms($res['roomTypeId'], $qty, $res['checkIn'], $res['checkOut']);
             sort($ids);   // fixed lock order
             $rooms = [];
@@ -67,8 +72,8 @@ final class StayCoordinator
             }
             $stayId = Uuid::v4();
             try {
-                $this->pdo->prepare('INSERT INTO stay (stay_id, reservation_id, check_in, check_out, actual_check_in, identity_verified_by, identity_doc_type) VALUES (?, ?, ?, ?, UTC_TIMESTAMP(), ?, ?)')
-                    ->execute([$stayId, $rid, $res['checkIn'], $res['checkOut'], $user['accountId'], $doc]);
+                $this->pdo->prepare('INSERT INTO stay (stay_id, reservation_id, check_in, check_out, actual_check_in, identity_verified_by, identity_doc_type, queue_started_at, override_by, override_reason) VALUES (?, ?, ?, ?, UTC_TIMESTAMP(), ?, ?, ?, ?, ?)')
+                    ->execute([$stayId, $rid, $res['checkIn'], $res['checkOut'], $user['accountId'], $doc, $queueStart, $override === null ? null : $override['by'], $override['reason'] ?? null]);
             } catch (\PDOException $e) {
                 if (($e->errorInfo[1] ?? 0) === 1062) {
                     throw new ApiException(409, 'ALREADY_CHECKED_IN', 'This reservation already has a stay');
@@ -82,12 +87,13 @@ final class StayCoordinator
                 $occupy->execute([$room['room_id']]);
             }
             $this->pdo->prepare("UPDATE arrival SET status = 'ARRIVED' WHERE reservation_id = ?")->execute([$rid]);
+            Audit::record($this->pdo, $user, $override === null ? 'stay.check_in' : 'stay.early_check_in', 'reservation', $rid, ['stayId' => $stayId, 'doc' => $doc, 'override' => $override['reason'] ?? null], $ip);
             Outbox::add($this->pdo, 'StayCheckedIn', $stayId, 1, $rid, ['reservationId' => $rid, 'stayId' => $stayId, 'roomIds' => array_column($rooms, 'room_id')]);
             return [201, ['stayId' => $stayId, 'reservationId' => $rid, 'rooms' => array_map(fn ($r) => ['roomId' => $r['room_id'], 'roomNumber' => $r['room_number']], $rooms)]];
         });
     }
 
-    public function checkOut(array $user, array $b): array
+    public function checkOut(array $user, array $b, ?string $ip = null): array
     {
         $rid = $this->uuid($b['reservationId'] ?? null, 'reservationId');
         $stay = $this->one('SELECT stay_id, actual_check_out FROM stay WHERE reservation_id = ?', [$rid]) ?? throw new ApiException(404, 'NOT_FOUND', 'No stay for this reservation');
@@ -105,7 +111,7 @@ final class StayCoordinator
             Peer::ok('roomops', 'billing', 'POST', "/internal/folios/{$rid}/settle", $user, []);
         }
 
-        return Tx::run($this->pdo, function () use ($rid): array {
+        return Tx::run($this->pdo, function () use ($rid, $user, $ip): array {
             $s = $this->one('SELECT stay_id, actual_check_out FROM stay WHERE reservation_id = ? FOR UPDATE', [$rid]);
             if ($s === null || $s['actual_check_out'] !== null) {
                 throw new ApiException(409, 'ALREADY_CHECKED_OUT');
@@ -121,9 +127,44 @@ final class StayCoordinator
                 $dirty->execute([$roomId]);
                 $task->execute([Uuid::v4(), $roomId]);
             }
+            Audit::record($this->pdo, $user, 'stay.check_out', 'reservation', $rid, ['stayId' => $s['stay_id']], $ip);
             Outbox::add($this->pdo, 'StayCheckedOut', $s['stay_id'], 2, $rid, ['reservationId' => $rid, 'stayId' => $s['stay_id'], 'roomIds' => $roomIds]);
             return [200, ['stayId' => $s['stay_id'], 'reservationId' => $rid, 'status' => 'CHECKED_OUT', 'roomsToClean' => count($roomIds)]];
         });
+    }
+
+    /**
+     * Arrival-date rule. On the arrival date (or later, before check-out) check-in is normal. Before the arrival date a manager
+     * must approve: either an approved request exists, or the acting user is a manager who gives a reason.
+     * @return ?array{by:string,reason:string} null when no override was needed
+     */
+    private function arrivalDate(array $user, array $res, string $rid, string $managerReason): ?array
+    {
+        $today = Dates::manilaToday();
+        if ($today >= $res['checkOut']) {
+            throw new ApiException(409, 'STAY_ENDED', 'The stay dates have already passed');
+        }
+        if ($today >= $res['checkIn']) {
+            return null;
+        }
+        $o = $this->one("SELECT reason, decided_by FROM arrival_override WHERE reservation_id = ? AND status = 'APPROVED'", [$rid]);
+        if ($o !== null) {
+            return ['by' => (string) $o['decided_by'], 'reason' => (string) $o['reason']];
+        }
+        $managerReason = trim($managerReason);
+        if ($user['role'] === 'manager' && $managerReason !== '') {
+            return ['by' => $user['accountId'], 'reason' => mb_substr($managerReason, 0, 200)];
+        }
+        throw new ApiException(409, 'EARLY_ARRIVAL', "Arrival is on {$res['checkIn']}. A manager must approve an earlier check-in.", ['checkIn' => $res['checkIn']]);
+    }
+
+    /** Time the guest joined the queue (for the queue-to-key measure). Ignored when missing or implausible. */
+    private function queueStart(mixed $iso): ?string
+    {
+        if (!is_string($iso) || ($t = strtotime($iso)) === false || $t > time() || $t < time() - 6 * 3600) {
+            return null;
+        }
+        return Dates::sqlUtc($t);
     }
 
     /** @return list<string> */

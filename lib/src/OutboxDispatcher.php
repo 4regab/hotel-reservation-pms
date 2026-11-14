@@ -25,7 +25,7 @@ final class OutboxDispatcher
         )->fetchAll();
         $out = ['delivered' => 0, 'failed' => 0, 'review' => 0];
         foreach ($rows as $row) {
-            [$status] = Http::call('POST', Routing::url($row['handler_name']) . '/internal/events', ServiceAuth::headers($this->service), $row['payload'], 5);
+            [$status] = Http::call('POST', Routing::url($row['handler_name']) . '/internal/events', ServiceAuth::headers($this->service, $row['handler_name']), $row['payload'], 5);
             if ($status >= 200 && $status < 300) {
                 $this->pdo->prepare("UPDATE outbox_delivery SET status = 'DELIVERED', delivered_at = UTC_TIMESTAMP(), last_error = NULL WHERE event_id = ? AND handler_name = ?")
                     ->execute([$row['event_id'], $row['handler_name']]);

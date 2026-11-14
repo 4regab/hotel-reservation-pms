@@ -9,6 +9,7 @@ final class Routing
     public const SUBSCRIBERS = [
         'ReservationConfirmed'     => ['roomops', 'portal'],
         'ReservationCancelled'     => ['roomops', 'portal'],
+        'ReservationNoShow'        => ['roomops', 'portal'],
         'PaymentCaptured'          => ['booking', 'portal'],
         'RefundRequested'          => ['billing'],
         'RefundCompleted'          => ['booking', 'portal'],

@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Billing;
 
 use Lib\ApiException;
+use Lib\Audit;
 use Lib\Outbox;
 use Lib\Tx;
 use Lib\Uuid;
@@ -29,9 +30,9 @@ final class FolioService
     }
 
     /** StayCheckedIn: open the bill with the room charge and attach earlier payments. Safe to repeat. */
-    public function open(string $reservationId, int $amountMinor, string $currency): void
+    public function open(string $reservationId, int $amountMinor, string $currency, string $guarantee = 'NONE'): void
     {
-        Tx::run($this->pdo, function () use ($reservationId, $amountMinor, $currency): void {
+        Tx::run($this->pdo, function () use ($reservationId, $amountMinor, $currency, $guarantee): void {
             if ($this->one('SELECT 1 AS x FROM folio WHERE reservation_id = ? FOR UPDATE', [$reservationId]) !== null) {
                 return;
             }
@@ -40,6 +41,12 @@ final class FolioService
             $this->pdo->prepare('INSERT INTO charge (charge_id, folio_id, description, amount_minor, currency, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())')
                 ->execute([Uuid::v4(), $id, 'Room charge', $amountMinor, $currency, 'system']);
             $this->pdo->prepare('UPDATE payment SET folio_id = ? WHERE reservation_id = ? AND folio_id IS NULL')->execute([$id, $reservationId]);
+            if ($guarantee === 'OTA_PREPAID') {
+                // The travel partner pays the hotel directly; record it so the bill balances.
+                $pid = Uuid::v4();
+                $this->pdo->prepare("INSERT IGNORE INTO payment (payment_id, reservation_id, folio_id, provider, method, provider_payment_id, provider_event_id, amount_minor, currency, status, created_at) VALUES (?, ?, ?, 'OTA', 'PARTNER', ?, NULL, ?, ?, 'CAPTURED', UTC_TIMESTAMP())")
+                    ->execute([$pid, $reservationId, $id, 'ota-' . $reservationId, $amountMinor, $currency]);
+            }
         });
     }
 
@@ -49,28 +56,33 @@ final class FolioService
         $this->pdo->prepare("UPDATE folio SET status = 'CLOSED' WHERE reservation_id = ?")->execute([$reservationId]);
     }
 
-    public function postCharge(string $reservationId, string $description, int $amountMinor, string $accountId): array
+    public function postCharge(string $reservationId, string $description, int $amountMinor, array $user, ?string $ip = null): array
     {
         if ($description === '' || strlen($description) > 120 || $amountMinor <= 0) {
             throw new ApiException(422, 'INVALID_REQUEST', 'description and a positive amountMinor (centavos) are required');
         }
-        return Tx::run($this->pdo, function () use ($reservationId, $description, $amountMinor, $accountId): array {
+        return Tx::run($this->pdo, function () use ($reservationId, $description, $amountMinor, $user, $ip): array {
             $f = $this->one('SELECT folio_id, status, currency FROM folio WHERE reservation_id = ? FOR UPDATE', [$reservationId]) ?? throw new ApiException(404, 'NOT_FOUND', 'No open bill for this reservation');
             if ($f['status'] !== 'OPEN') {
                 throw new ApiException(409, 'FOLIO_CLOSED');
             }
             $id = Uuid::v4();
             $this->pdo->prepare('INSERT INTO charge (charge_id, folio_id, description, amount_minor, currency, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())')
-                ->execute([$id, $f['folio_id'], $description, $amountMinor, $f['currency'], $accountId]);
+                ->execute([$id, $f['folio_id'], $description, $amountMinor, $f['currency'], $user['accountId']]);
+            Audit::record($this->pdo, $user, 'folio.charge', 'reservation', $reservationId, ['chargeId' => $id, 'amountMinor' => $amountMinor], $ip);
             $this->pdo->prepare('UPDATE folio SET total_minor = total_minor + ? WHERE folio_id = ?')->execute([$amountMinor, $f['folio_id']]);
             return [201, ['chargeId' => $id] + $this->summary($reservationId)];
         });
     }
 
     /** Take the outstanding balance on site (cash/terminal). No effect when nothing is owed. */
-    public function settle(string $reservationId, string $accountId): array
+    public function settle(string $reservationId, array $user, string $method = 'CASH', ?string $ip = null): array
     {
-        return Tx::run($this->pdo, function () use ($reservationId, $accountId): array {
+        $accountId = $user['accountId'];
+        if (!in_array($method, ['CASH', 'CARD_TERMINAL', 'GCASH'], true)) {
+            throw new ApiException(422, 'INVALID_REQUEST', 'method must be CASH, CARD_TERMINAL or GCASH');
+        }
+        return Tx::run($this->pdo, function () use ($reservationId, $accountId, $user, $method, $ip): array {
             $s = $this->summary($reservationId, true);
             if (!$s['folioOpen']) {
                 throw new ApiException(409, 'FOLIO_NOT_OPEN');
@@ -80,15 +92,16 @@ final class FolioService
             }
             $paymentId = Uuid::v4();
             $f = $this->one('SELECT folio_id FROM folio WHERE reservation_id = ?', [$reservationId]);
-            $this->pdo->prepare("INSERT INTO payment (payment_id, reservation_id, folio_id, provider, provider_payment_id, provider_event_id, amount_minor, currency, status, created_at) VALUES (?, ?, ?, 'ONSITE', ?, NULL, ?, ?, 'CAPTURED', UTC_TIMESTAMP())")
-                ->execute([$paymentId, $reservationId, $f['folio_id'], 'onsite-' . $paymentId, $s['balanceMinor'], $s['currency']]);
+            $this->pdo->prepare("INSERT INTO payment (payment_id, reservation_id, folio_id, provider, method, provider_payment_id, provider_event_id, amount_minor, currency, status, created_at) VALUES (?, ?, ?, 'ONSITE', ?, ?, NULL, ?, ?, 'CAPTURED', UTC_TIMESTAMP())")
+                ->execute([$paymentId, $reservationId, $f['folio_id'], $method, 'onsite-' . $paymentId, $s['balanceMinor'], $s['currency']]);
+            Audit::record($this->pdo, $user, 'payment.onsite', 'reservation', $reservationId, ['paymentId' => $paymentId, 'amountMinor' => $s['balanceMinor'], 'method' => $method], $ip);
             Outbox::add($this->pdo, 'PaymentCaptured', $paymentId, 1, $reservationId, ['paymentId' => $paymentId, 'reservationId' => $reservationId, 'amountMinor' => $s['balanceMinor'], 'currency' => $s['currency'], 'method' => 'ONSITE']);
             return [200, $this->summary($reservationId) + ['settledMinor' => $s['balanceMinor'], 'settledBy' => $accountId]];
         });
     }
 
     /** One refund request per payment (unique payment_id). Returns the refund id. */
-    public function requestRefund(string $paymentId, int $amountMinor, string $requestedBy, string $reason): array
+    public function requestRefund(string $paymentId, int $amountMinor, string $requestedBy, string $reason, ?array $user = null, ?string $ip = null): array
     {
         $p = $this->one('SELECT payment_id, amount_minor, status FROM payment WHERE payment_id = ?', [$paymentId]) ?? throw new ApiException(404, 'NOT_FOUND', 'Unknown payment');
         if ($p['status'] !== 'CAPTURED' || $amountMinor <= 0 || $amountMinor > (int) $p['amount_minor']) {
@@ -105,6 +118,7 @@ final class FolioService
             }
             throw $e;
         }
+        Audit::record($this->pdo, $user ?? ['accountId' => 'system', 'role' => 'service'], 'refund.requested', 'refund', $id, ['paymentId' => $paymentId, 'amountMinor' => $amountMinor, 'reason' => $reason], $ip);
         return [201, ['refundId' => $id, 'status' => 'REQUESTED', 'approval' => 'PENDING']];
     }
 
@@ -125,16 +139,20 @@ final class FolioService
     }
 
     /** Manager approves; the provider refund is requested AFTER the approval commits (no locks held during the call). */
-    public function approveRefund(string $refundId, array $user): array
+    public function approveRefund(string $refundId, array $user, ?string $ip = null): array
     {
-        $r = Tx::run($this->pdo, function () use ($refundId, $user): array {
+        $r = Tx::run($this->pdo, function () use ($refundId, $user, $ip): array {
             $r = $this->one('SELECT r.refund_id, r.amount_minor, r.status, r.requested_by, p.provider_payment_id, p.reservation_id, p.payment_id, p.currency FROM refund r JOIN payment p ON p.payment_id = r.payment_id WHERE r.refund_id = ? FOR UPDATE OF r', [$refundId])
                 ?? throw new ApiException(404, 'NOT_FOUND');
             RefundPolicy::assertCanApprove($user['role'], $user['accountId'], $r['requested_by']);
             if ($r['status'] === 'COMPLETED') {
                 throw new ApiException(409, 'REFUND_ALREADY_COMPLETED');
             }
+            if ($r['status'] !== 'REQUESTED') {
+                throw new ApiException(409, 'REFUND_NOT_PENDING', 'This refund was already decided');
+            }
             $this->pdo->prepare("UPDATE refund SET approval = 'APPROVED', approved_by = ? WHERE refund_id = ?")->execute([$user['accountId'], $refundId]);
+            Audit::record($this->pdo, $user, 'refund.approved', 'refund', $refundId, ['amountMinor' => (int) $r['amount_minor']], $ip);
             return $r;
         });
         if (!str_starts_with((string) $r['provider_payment_id'], 'onsite-')) {

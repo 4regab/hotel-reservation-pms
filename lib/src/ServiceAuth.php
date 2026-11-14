@@ -4,8 +4,10 @@ declare(strict_types=1);
 namespace Lib;
 
 /**
- * Service-to-service authentication. Every private request carries a scoped bearer credential for the
- * caller (env TOKEN_<CALLER>) and, when a person is acting, a signed user context.
+ * Service-to-service authentication. Every private request carries a bearer credential that belongs to one caller/callee
+ * pair (env TOKEN_<CALLER>_TO_<CALLEE>, for example TOKEN_PORTAL_TO_BOOKING) and, when a person is acting, a user context
+ * signed with the same pair secret. A service holds only the pair secrets it sends or receives, so a leak in one container
+ * cannot be used to pose as another service. The receiving service names itself in env SERVICE_NAME.
  */
 final class ServiceAuth
 {
@@ -15,9 +17,9 @@ final class ServiceAuth
     }
 
     /** @param ?array{accountId:string,role:string} $user @return list<string> */
-    public static function headers(string $caller, ?array $user = null, ?string $idempotencyKey = null): array
+    public static function headers(string $caller, string $callee, ?array $user = null, ?string $idempotencyKey = null): array
     {
-        $secret = (string) getenv('TOKEN_' . strtoupper($caller));
+        $secret = (string) getenv('TOKEN_' . strtoupper($caller) . '_TO_' . strtoupper($callee));
         $h = ['Authorization: Bearer ' . $secret, 'X-Service-Caller: ' . $caller, 'Content-Type: application/json'];
         if ($user !== null) {
             $b64 = base64_encode(json_encode(['accountId' => $user['accountId'], 'role' => $user['role']]));
@@ -38,7 +40,8 @@ final class ServiceAuth
     {
         $caller = (string) $r->header('X-Service-Caller');
         $auth = (string) $r->header('Authorization');
-        $secret = preg_match('/^[a-z]{3,20}$/', $caller) ? (string) getenv('TOKEN_' . strtoupper($caller)) : '';
+        $self = (string) getenv('SERVICE_NAME');
+        $secret = preg_match('/^[a-z]{3,20}$/', $caller) && preg_match('/^[a-z]{3,20}$/', $self) ? (string) getenv('TOKEN_' . strtoupper($caller) . '_TO_' . strtoupper($self)) : '';
         if ($secret === '' || !str_starts_with($auth, 'Bearer ') || !hash_equals($secret, substr($auth, 7))) {
             throw new ApiException(401, 'UNAUTHENTICATED', 'Missing or invalid service credentials');
         }

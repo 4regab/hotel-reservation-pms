@@ -1,201 +1,220 @@
-# HarborLight Hotels: Digital Reservation & Property Management System
+# HarborLight Hotels & Resorts: reservations and property management
 
-A proof of concept for a fictional 45-room hotel in Metro Manila, **HarborLight Hotels & Resorts**.
-It replaces a desktop booking program and a spreadsheet with a small set of **plain PHP microservices**
-(no framework, no Composer packages). Each service owns its own MySQL database and talks to the others
-over private REST and durable events.
+A working website and back office for **HarborLight Hotels & Resorts**, a fictional 45-room hotel in Metro Manila
+(20 Standard, 15 Deluxe, 10 Suite). Guests search, book and pay online. Staff run the front desk, housekeeping,
+payments, partner bookings, reports and privacy requests from the same system.
 
-It is a proof of concept, not production software. See [What is simplified](#what-is-simplified).
+It is plain PHP 8.3 (no framework, no Composer packages), server-rendered pages with Tailwind CSS and a little vanilla
+JavaScript, MySQL 8, and nginx + PHP-FPM. The compiled CSS is committed, so nothing needs Node to run.
 
-## What it does
+![Landing page at 1280 px](docs/screenshots/landing-desktop-1280.png)
 
-One journey works from end to end:
+| Phone (375 px) | Tablet (768 px) |
+| --- | --- |
+| ![Landing page on a phone](docs/screenshots/landing-mobile-375.png) | ![Landing page on a tablet](docs/screenshots/landing-tablet-768.png) |
 
-1. A guest **searches availability** and gets a signed price quote (no stock is used yet).
-2. The guest **creates a 10-minute hold**. Stock for every night from check-in up to, but excluding, check-out is saved together or not at all.
-3. The guest starts a **PayMongo checkout** (sandbox, or a built-in mock that needs no network or keys).
-4. PayMongo calls the **signed webhook**. Billing verifies the signature, records the payment once, and queues `PaymentCaptured`.
-5. Booking **confirms** only when stock is secured *and* the payment is verified (or a manager approves a pay-at-hotel guarantee). A browser "success" page can never confirm a booking.
-6. Reception **checks the guest in**: confirmed reservation, verified identity, a ready room of the booked type, and payment or guarantee.
-7. Reception **checks the guest out**: balance settled, bill closed, room marked dirty.
-8. Housekeeping gets a **cleaning task**, cleans the room, and sets it **ready** again.
+More screenshots are in [`docs/screenshots`](docs/screenshots): search results, payment with the hold countdown, confirmation,
+front desk, housekeeping board, approvals queue and reports.
+
+## What you can do
+
+**Guests**
+- See rooms with photos, bed, size and amenities. Search by dates, guests and rooms. Prices are live and include taxes.
+- Pick a room, enter details, and the room is **held for 10 minutes** with a visible countdown. Pay by card, GCash or Maya on the payment provider's hosted page.
+- A booking is confirmed only when the provider's signed notice arrives, never because a browser page loaded.
+- Confirmation by email (Resend), plus a printable page and a downloadable file. Cancel free until 48 hours before arrival. Receipts, refunds.
+- Create an account, reset the password by email, and ask the hotel to give a copy of, correct, or delete their data.
+
+**Staff** (each role sees only its own tools)
+- **Reception:** today's arrivals, in-house guests and departures; find any booking by code, name or email; check-in with ID check and room choice; check-out with the bill; walk-in bookings paid at the desk; no-show handling; request pay-at-hotel or early arrival from the manager.
+- **Housekeeping:** task board and floor-by-floor room grid. A cleaner marks a room clean, and a **different person inspects** it before it goes back on sale. Report maintenance problems.
+- **Maintenance:** block rooms for dates. A block never silently removes a guest's room: conflicts go to the manager.
+- **Cashier / finance:** payments, matching payments to the provider statement, refund requests, accounting CSV exports.
+- **Manager:** one approvals queue (refunds, pay-at-hotel guarantees, maintenance conflicts, early arrivals, partner allotments, accounting exports), rates and room types, travel partner allotments and CSV import, reports.
+- **Data steward:** finds possible duplicate guests (same email, phone or name) and merges them. Sees counts only, never payments or bookings.
+- **IT / privacy lead:** users and roles (with second-factor reset), audit log from all four systems, system health (services, event delivery, email), privacy requests.
+- **Reports:** occupancy, ADR, RevPAR, revenue, cash by day and method, bookings by channel, and the hotel's seven KPI targets with on/off target marks.
 
 ## Architecture
 
-```
-Browser ──HTTPS──> Portal (PHP gateway + pages)
-                    │  sessions, CSRF, roles, rate limits, signed user context
-        ┌───────────┼─────────────┬───────────────┐
-        ▼           ▼             ▼               ▼
-     Booking   Room Operations  Billing         Portal DB
-     (own DB)     (own DB)      (own DB)     accounts, sessions,
-                                              notification jobs,
-                                              reporting copies
+Four small PHP services, each with its **own database and its own database account**, behind one nginx.
 
- Each service: outbox ──scheduled dispatcher──HTTPS──> consumer inbox (dedupe by eventId)
- Billing ──> PayMongo (hosted checkout)   PayMongo ──signed webhook──> Portal ──> Billing
+```
+                      Browser
+                         │  HTTPS
+                       nginx  ── static files (/assets)
+          ┌──────────────┼───────────────┬───────────────┐
+          ▼              ▼               ▼               ▼
+       Portal        Booking        Room Operations    Billing
+   pages, sessions   guests, stock,   rooms, stays,    folios, payments,
+   accounts, email   reservations,    cleaning,        refunds, exports
+   privacy, audit    OTA partners     maintenance      PayMongo
+      (portal_db)    (booking_db)     (roomops_db)     (billing_db)
+
+   Each service: outbox ──scheduled job──> other services' /internal/events (inbox, deduplicated by eventId)
 ```
 
 | Part | Owns | Notes |
 | --- | --- | --- |
-| **Portal** (`portal/`) | Accounts, sessions, notification jobs, read-only reports | Renders pages, checks session, role and CSRF token, forwards to private services. Cannot sell a room or change a payment. |
-| **Booking** (`booking/`) | Guest, RoomType, Reservation, InventoryNight, Allocation, OtaBooking | Dated room-night stock. One transaction saves reservation, allocations, counters and outbox event. |
-| **Room Operations** (`roomops/`) | Room, Stay, RoomAssignment, CleaningTask, MaintenanceBlock | Locks the room row before saving a stay. Rejects overlapping assignments. |
-| **Billing** (`billing/`) | Folio, Charge, Payment, Refund | Verifies the PayMongo signature, deduplicates by provider ids, never stores card data. |
-| **Shared library** (`lib/`) | Nothing | Small helpers: router, PDO connection, outbox, inbox, idempotency, roles, stock arithmetic. |
+| **Portal** (`portal/`) | Accounts, sessions, email jobs and log, privacy requests, audit view | Renders every page and the public `/v1` API. Checks session, role and CSRF, then calls the other services with a signed user context. It cannot sell a room or change a payment itself. |
+| **Booking** (`booking/`) | Guests, room types, reservations, dated stock, OTA allotments and imports | One transaction saves a hold, its nights, the counters and its event, or none of them. Rows are locked in date order. |
+| **Room Operations** (`roomops/`) | Rooms, stays, assignments, cleaning, maintenance, early-arrival approvals | Locks the room row before assigning. Refuses overlapping assignments. |
+| **Billing** (`billing/`) | Bills, charges, payments, refunds, accounting exports | Verifies the payment signature, records a payment once, never stores card data. |
+| **Shared library** (`lib/`) | Nothing | Router, PDO, outbox/inbox, idempotency keys, roles, audit, CSV, stock arithmetic. |
 
 How the rules are enforced:
 
-- **Stock.** Counters per room type per night: `capacity`, `blocked`, `held`, `confirmed`, `ota_remaining`. The pure function `Lib\Inventory::reserve()` checks every night first and changes nothing if one night is short. The database also has `CHECK` constraints, so stock cannot go negative or above capacity. Booking locks the night rows in date order (`SELECT ... FOR UPDATE`) inside one PDO transaction.
-- **Events.** A service writes the event to its `outbox` table in the same transaction as the data change. A scheduled PHP CLI job delivers it over authenticated HTTP to each consumer's `/internal/events`. The consumer writes the `eventId` to its `inbox` in the same transaction as its own update, then answers 2xx. Failed deliveries retry with growing delays and are flagged `REVIEW` after 5 attempts (never deleted).
-- **No lock during a network call.** Calls to PayMongo and to other services happen outside database transactions.
-- **Late payments.** Paid after the hold expired: try a fresh allocation, else keep it unconfirmed and file one refund request. Paid after cancellation: stay cancelled and file one refund request.
-- **Privacy.** Events and logs carry no contact or card data (enforced by `Lib\Pii`). Only payment references are stored. Guests see only their own bookings (others return 404). Identity checks store the document *type* only.
-- **Roles.** `guest`, `reception`, `housekeeping`, `maintenance`, `cashier`, `manager`, `it`, `steward`. The portal checks the role, and each service checks it again from a signed user context. Staff sign in with a second factor (6-digit TOTP code). A refund is approved by a manager who did not request it.
-- **Money and time.** Integer centavos (PHP 2,500.00 is `250000`), currency `PHP`, UUID ids, event times in UTC, stay dates in `Asia/Manila`. Check-in 14:00, check-out 12:00.
-
-Directory map:
-
-```
-portal/ booking/ roomops/ billing/   public/index.php (routes), src/, bin/ (scheduled jobs), migrations/ (SQL)
-lib/src/                             shared helpers
-tests/                               logic checks (php tests/run.php)
-docs/openapi.yaml, docs/asyncapi.yaml  machine-readable contracts
-docker-compose.yml, docker/          runs everything
-```
+- **Stock.** Counters per room type per night: capacity, blocked, held, confirmed, partner-reserved. A pure function checks every night first and changes nothing if one is short. The database also has `CHECK` constraints, so stock cannot go negative or above capacity even if code is wrong. A test starts 20 simultaneous holds on the last room and proves exactly one wins.
+- **Events.** A service writes the event in the same transaction as the change. A scheduled job delivers it over the private network. The receiver records the event id in the same transaction as its own update. Failures retry with growing delays and are flagged for review after 5 tries, never deleted.
+- **Late payments.** Paid after the hold expired: try a fresh allocation, otherwise stay unconfirmed and file one refund request. Paid after cancellation: stay cancelled and file one refund request. Replays of the same payment notice do nothing.
+- **Separation of duties.** A cashier cannot approve refunds. Nobody approves their own refund or export. The person who cleaned a room cannot inspect it. Housekeeping has no payment or identity access. The steward sees no bookings. IT sees no bookings or payments.
+- **Credentials.** Each caller/callee pair has its own secret (`TOKEN_PORTAL_TO_BOOKING` and so on). A container receives only the pairs it sends or receives, plus its own database account. Only the web container publishes a port, and the services' private ports are not reachable from outside.
+- **Privacy.** Contact and card data stay out of events, logs and the audit log. Only the identity document *type* is saved. Guests see only their own records (others get 404).
+- **Money and time.** Integer centavos, currency PHP, UUID ids, times in UTC, stay dates in Asia/Manila. Check-in 14:00, check-out 12:00.
 
 ## Run it
 
 You need Docker with Compose.
 
 ```bash
-cp .env.example .env        # optional: compose has the same demo defaults built in
+cp .env.example .env     # then change every value that says change-me
 docker compose up --build
 ```
 
-Open <http://localhost:8080>. The first start creates the four databases, one limited MySQL user each
-(data changes only), applies every service's migrations, seeds the **45 rooms** (20 Standard, 15 Deluxe, 10 Suite)
-and the room types, and creates demo accounts.
-
-Demo accounts (all use `DEMO_PASSWORD`, default `harborlight-demo`; demo use only):
-
-| Account | Role | Second factor |
-| --- | --- | --- |
-| `guest@example.test` | guest | none |
-| `reception@example.test` | reception | 6-digit code |
-| `housekeeping@example.test` | housekeeping | 6-digit code |
-| `maintenance@example.test` | maintenance | 6-digit code |
-| `cashier@example.test` | cashier | 6-digit code |
-| `manager@example.test` | manager | 6-digit code |
-| `it@example.test`, `steward@example.test` | it, data steward | 6-digit code |
-
-Get the staff code (secret `DEMO_TOTP_SECRET`, default `JBSWY3DPEHPK3PXP`; you can also add it to an authenticator app):
+Open <http://localhost:8080>. The first start creates the four databases and their limited accounts, applies the migrations,
+creates a first IT account, and (when `SEED_DEMO=1`, the default in `.env.example`) loads about 135 days of invented bookings.
+If you left `ADMIN_PASSWORD` empty, the generated first-admin password and authenticator secret are printed once:
 
 ```bash
-docker compose exec portal php -r 'require "autoload.php"; echo Portal\Totp::code(getenv("DEMO_TOTP_SECRET"), time()), "\n";'
+docker compose logs migrate
 ```
 
-### Walk through the core journey
+For a real hotel set `SEED_DEMO=0`, `COOKIE_SECURE=1`, a real `PUBLIC_BASE_URL`, and strong secrets (`openssl rand -hex 24`).
 
-1. Sign in as the guest. On **Find a room**, pick dates and press **Hold for 10 minutes**.
-2. On the reservation page press **Pay with PayMongo (sandbox)**, then **Pay now (mock)**. The page shows `CONFIRMED` within a few seconds (the job runner delivers events every 5 seconds).
-3. Sign in as `reception@example.test` with the code. On **Staff**, press **Arrivals**, copy the reservation id, and **Check in** with "identity verified" ticked.
-4. Wait a few seconds (Billing opens the bill from the `StayCheckedIn` event), then **Check out**. If a balance is owed, tick "take balance now".
-5. Sign in as `housekeeping@example.test`. Press **Cleaning tasks** and **Rooms**. Set the room to `CLEANING`, then `READY`, using the room's current `version`.
+### Demo accounts (demo data only)
 
-Pay-at-hotel path: as `manager@example.test`, use **Approve pay-at-hotel** on a `HELD` reservation. Check-in then works without a payment.
-
-### Real PayMongo sandbox
-
-Set in `.env`: `PAYMONGO_MODE=sandbox`, `PAYMONGO_SECRET_KEY` (a `sk_test_...` key), `PAYMONGO_WEBHOOK_SECRET` (the signing secret of a webhook you create in the PayMongo dashboard for the `checkout_session.payment.paid` event), and `PUBLIC_BASE_URL` (an address PayMongo can reach, such as a tunnel). Point the webhook at `<PUBLIC_BASE_URL>/v1/webhooks/paymongo`. Card entry happens on PayMongo's hosted page, so card numbers and CVV never touch this system.
-
-### Scheduled jobs
-
-| Job | What it does |
-| --- | --- |
-| `booking/bin/expire-holds.php` | Releases stock for holds older than 10 minutes, once. |
-| `booking/bin/dispatch.php`, `roomops/bin/dispatch.php`, `billing/bin/dispatch.php` | Deliver committed outbox events and retry failures (review flag after 5 attempts). |
-| `portal/bin/send-notifications.php` | Sends queued emails (a log line in this demo). A failed email never changes a reservation. |
-
-Compose runs them in a loop every 5 seconds. In production run them from cron.
-
-## API contracts
-
-Public API (portal, `/v1`). Writes need a session cookie and an `X-CSRF-Token` header. `POST /v1/reservations` and checkout also need an `Idempotency-Key`.
-
-| Operation | Who | Result |
-| --- | --- | --- |
-| `POST /v1/login`, `POST /v1/logout`, `GET /v1/me` | anyone / signed in | Session and CSRF token. |
-| `GET /v1/availability` | public, rate limited | Options with a signed quote. Not reserved stock. |
-| `POST /v1/reservations` | guest, reception | 201 `HELD`, 409 conflict, 422 invalid. |
-| `GET /v1/reservations/{id}` | owner or staff | Others get 404. |
-| `POST /v1/reservations/{id}/checkout` | owner or staff | 201 with a PayMongo checkout URL for the saved price. |
-| `POST /v1/webhooks/paymongo` | PayMongo | Billing verifies the signature, commits, then acknowledges. |
-| `POST /v1/reservations/{id}/cancel` | owner or staff | Follows the saved terms (free 48 hours before arrival, else first night is lost; a manager can waive it). |
-| `POST /v1/reservations/{id}/approve-guarantee` | manager | Confirms a held reservation as pay-at-hotel. |
-| `POST /v1/stays/check-in`, `POST /v1/stays/check-out` | reception | Rules above. |
-| `PATCH /v1/rooms/{id}/status` | housekeeping, manager | Rejects stale versions and invalid transitions. |
-| `GET /v1/arrivals`, `/v1/cleaning-tasks`, `/v1/rooms`, `/v1/reports/summary` | by role | Read views. |
-| `POST /v1/maintenance-blocks` | maintenance, manager | Asks Booking for capacity first; conflicts return 409 for manager review. |
-| `GET /v1/folios/{id}`, `POST /v1/folios/{id}/charges` | cashier, manager | Bill and extra charges. |
-| `POST /v1/refunds`, `POST /v1/refunds/{id}/approve` | cashier requests, manager approves | Never your own request. |
-
-Errors use one shape, `{"error":{"code":"...","message":"..."}}`, with status 401 (not signed in), 403 (role or CSRF), 404, 409, 422, 429 or 503.
-
-Contract files:
-
-- [`docs/openapi.yaml`](docs/openapi.yaml): OpenAPI 3.0.3 for the reservation hold API.
-- [`docs/asyncapi.yaml`](docs/asyncapi.yaml): AsyncAPI 2.6.0 for the `ReservationConfirmed` event on channel `hotel.reservations.v1`.
-
-Events (envelope: `eventId`, `schemaVersion`, `eventType`, `occurredAt`, `aggregateId`, `aggregateVersion`, `correlationId`, `data`):
-
-| Event | From | To |
-| --- | --- | --- |
-| `ReservationConfirmed`, `ReservationCancelled` | Booking | Room Operations, Portal |
-| `PaymentCaptured`, `RefundCompleted` | Billing | Booking, Portal |
-| `RefundRequested` | Booking | Billing |
-| `StayCheckedIn`, `StayCheckedOut` | Room Operations | Booking, Billing, Portal |
-| `MaintenanceBlockApproved` | Room Operations | Portal |
-
-## Quality targets
-
-These come from the architecture brief. They are **test targets, not measured results**.
-
-| Attribute | Target |
-| --- | --- |
-| Correctness | No negative room stock and no repeated payment effects. A competing request may be rejected rather than oversold. |
-| Speed | At 20 simultaneous sessions and 2 booking commands per second, 95% of searches finish within 2 seconds and holds within 3 seconds. |
-| Availability | 99% monthly booking API availability. Restore within 24 hours with at most 24 hours of data loss. |
-| Privacy | Guests see only their own bookings. Staff roles are limited. Encrypted transport and backups. Contacts and card data stay out of logs and events. |
-| Business | Oversold bookings under 0.2% of confirmed. Paid direct bookings confirmed within 2 minutes for 95%. Checkout-to-ready median 45 minutes or less. |
-
-## Checks
+With `SEED_DEMO=1` every account below uses the password `harborlight-demo` (`DEMO_PASSWORD`). Staff also need a 6-digit code.
+The demo authenticator secret is `JBSWY3DPEHPK3PXP` (`DEMO_TOTP_SECRET`). Add it to an authenticator app, or print the current code:
 
 ```bash
-bash scripts/lint.sh     # php -l on every PHP file, fails loudly
-php tests/run.php        # logic checks, no database or network, exit code 1 on failure
+docker compose exec portal php -r 'require "autoload.php"; echo Portal\Totp::code(getenv("DEMO_TOTP_SECRET") ?: "JBSWY3DPEHPK3PXP", time()), "\n";'
 ```
 
-The logic checks cover: all-or-nothing stock across nights and never exceeding capacity, idempotency-key replay and 409 on reuse,
-reservation state transitions (legal and illegal), roles and refund approval, retry schedule, PayMongo signature and event parsing,
-quote signing, cancellation terms, late-payment decisions, the staff TOTP code, and service-call forgery checks.
-The same two commands run in GitHub Actions (`.github/workflows/ci.yml`).
+| Email | Role | Try this |
+| --- | --- | --- |
+| `guest@example.test` | guest | My bookings, privacy page |
+| `reception@example.test`, `reception2@example.test` | reception | Front desk, check-in, walk-in |
+| `housekeeping@example.test`, `housekeeping2@example.test` | housekeeping | Task board (one cleans, the other inspects) |
+| `maintenance@example.test` | maintenance | Block a room |
+| `cashier@example.test` | cashier | Payments, refund request, export |
+| `manager@example.test`, `manager2@example.test` | manager | Approvals queue (the second manager can approve what the first asked for) |
+| `steward@example.test` | data steward | Possible duplicate guests |
+| `it@example.test` | IT / privacy lead | Users, audit log, health, privacy requests |
 
-The checks run without a database on purpose: the stock, state and idempotency rules are pure functions that the PDO code calls.
-The SQL, the transactions and the container setup are **not** covered by these checks.
+Sixteen sample guests also have accounts (for example `maribel.dizon@example.com`) with the same demo password. All names, emails and phone numbers are invented.
+Never use these passwords or this authenticator secret anywhere real.
 
-## What is simplified
+### Without Docker (development)
 
-Marked with `ponytail:` or `shortcut` comments in the code.
+You need PHP 8.3+ with `pdo_mysql`, and a MySQL 8 server.
 
-- One host and the PHP built-in server. Put nginx and php-fpm in front for real traffic.
-- All containers receive all four service credentials. Give each service only the ones it needs.
-- Two requests that use a brand-new Idempotency-Key at the same instant are separated by the table's primary key; one of them gets an error and retries.
-- No-show marking, the OTA import screen (the tables and constraints exist), accounting export, privacy-request tooling and data-steward duplicate merge are not built.
-- A maintenance block does not change a room's status; it blocks bookable capacity only.
-- Emails are log lines. The demo mail job shows where SMTP goes.
-- Check-in does not enforce the arrival date, so the demo can be run on any day.
-- PayMongo webhook timestamps are not age-checked; replays are harmless because provider event and payment ids are unique.
+```bash
+export DB_ADMIN_PORT=3306 DB_ADMIN_USER=root           # a MySQL you can create databases in
+bash scripts/dev-stack.sh start                         # migrate, seed demo data, start the 4 services and the job loop
+open http://127.0.0.1:8100
+bash scripts/dev-stack.sh stop
+```
+
+`scripts/dev-env.sh` holds the demo environment (ports 8100 to 8103, throw-away secrets). This uses PHP's built-in server and is for development and CI only.
+
+### Settings (`.env`)
+
+| Variable | Meaning |
+| --- | --- |
+| `MYSQL_ROOT_PASSWORD` | Database admin password. Only the one-off `migrate` job and MySQL itself get it. |
+| `*_DB_PASS`, `*_DB_NAME`, `*_DB_USER` | One limited account per service (select, insert, update, delete; the audit table is append-only). |
+| `TOKEN_<FROM>_TO_<TO>` | Twelve service-to-service secrets, one per caller and callee pair. |
+| `QUOTE_SECRET` | Signs price quotes (Booking only). |
+| `PUBLIC_BASE_URL`, `HTTP_PORT`, `COOKIE_SECURE` | Public address, published port, and whether the session cookie is HTTPS-only. |
+| `PAYMONGO_MODE` | `mock` (offline demo checkout page) or `sandbox` (PayMongo test mode). |
+| `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET` | From your PayMongo dashboard. Point the webhook at `<PUBLIC_BASE_URL>/v1/webhooks/paymongo` for the `checkout_session.payment.paid` event. |
+| `RESEND_API_KEY`, `MAIL_FROM` | Email through Resend. With no key, emails are written to the log table instead (visible under System health). |
+| `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_PASSWORD`, `ADMIN_TOTP_SECRET` | First IT account, created only if none exists. Empty password or secret means generated and printed once. |
+| `SEED_DEMO`, `DEMO_PASSWORD`, `DEMO_TOTP_SECRET` | Demo data switch and the demo accounts' shared secrets. |
+
+## Deployment notes
+
+- Put a TLS terminator or load balancer in front of the `web` container and set `COOKIE_SECURE=1` and `PUBLIC_BASE_URL=https://...`. nginx trusts `X-Forwarded-For` from private address ranges so rate limits count real visitors.
+- Only publish the `web` container's port 8080. The service ports 8001 to 8004 exist only on the compose network (`/internal/` is also blocked on the public port).
+- Containers run as an unprivileged user with a read-only file system and no extra capabilities. The job containers (one small loop per service) can be replaced by cron every minute running the same commands.
+- Payments: use `sandbox` first, then live keys. PayMongo shows card forms on its own page, so card numbers never touch this system.
+- The compose file uses one MySQL container. For production use a managed MySQL 8 and point `*_DB_HOST` at it (add the variables to the service environments).
+- Run `docker compose run --rm migrate` after every upgrade. It applies new migrations once and is safe to repeat.
+
+### Backup and restore
+
+```bash
+BACKUP_PASSPHRASE=choose-a-long-passphrase scripts/backup.sh          # backups/harborlight-YYYYmmdd-HHMMSS.sql.gz.enc
+BACKUP_PASSPHRASE=choose-a-long-passphrase scripts/restore.sh backups/FILE.sql.gz.enc --yes
+```
+
+Backups are consistent (no site downtime), compressed and, with a passphrase, encrypted. Copy them **off the machine**. A restore replaces the data in all four
+databases, so it needs `--yes`. After a restore, privacy deletions made since the backup are lost: re-apply them from the privacy request list. The scripts also accept
+`MYSQLDUMP=` / `MYSQL=` to point at a non-Docker MySQL. A backup and restore round trip was tested against a real MySQL (see Tests).
+
+## Tests
+
+```bash
+php tests/run.php                  # 45 logic checks, no database
+bash scripts/dev-stack.sh start    # a stack on a real MySQL
+bash tests/e2e/run-all.sh          # the four end-to-end suites below
+```
+
+| Suite | What it proves (against the running stack and a real MySQL) |
+| --- | --- |
+| `journey` | Register, search, hold, checkout, signed payment notice, confirmation, email recorded, check-in, check-out, cleaning, inspection, room ready again. |
+| `features` | Early-arrival approval, no-show money, refund and export separation of duties, partner allotment and CSV import, duplicate merge, maintenance conflict, privacy request (copy and deletion), password reset by email link, who may see what. |
+| `concurrency` | 20 parallel holds on the last room: exactly one succeeds, the rest get 409, stock never goes negative or above capacity. Same with 3 rooms left. The database refuses to exceed capacity. |
+| `payments` | Forged, altered and missing signatures are refused. A wrong amount is held for review. A payment replayed five times takes effect once. Late payment after expiry confirms with a fresh allocation, or files one refund request when no room is left. Payment after cancellation files one refund request. |
+
+`tests/e2e/browser-flow.mjs` drives the guest booking flow in Chrome at 375, 768 and 1280 px (needs `playwright-core`; it is a developer tool, not part of CI).
+GitHub Actions (`.github/workflows/ci.yml`) runs lint, the logic checks, static analysis (PHPStan level 5 with a baseline for older findings), a check that the compiled CSS is current,
+the four end-to-end suites on a **MySQL 8.0** service container, and a Docker Compose start-up check.
+
+## Contracts and design system
+
+- [`docs/openapi.yaml`](docs/openapi.yaml): every public `/v1` operation with the roles allowed. **Generated** from the routes and roles by `php scripts/gen-openapi.php`; a logic check fails if it is out of date.
+- [`docs/asyncapi.yaml`](docs/asyncapi.yaml): the nine events, who publishes and who consumes them. A logic check compares it with `lib/src/Routing.php`.
+- **Design system:** Tailwind CSS v4 with Tailwind's built-in breakpoints only (`sm` 640, `md` 768, `lg` 1024, `xl` 1280). Mobile first. Source `portal/assets/app.src.css`; compiled file `portal/public/assets/app.css` is committed.
+  To change styles: `npm install && npm run build:css`. Pages ship no inline script or style (strict Content-Security-Policy). The room and hero pictures are SVG drawings made for this project in `portal/public/assets/img`.
+- **Accessibility:** semantic HTML, labelled fields, visible focus, skip link, keyboard-operable menus (native `<details>`), `aria-live` for the hold countdown and messages, charts with titles and text tables, motion off for people who ask for reduced motion, hover effects only on devices that hover.
+
+## Directory map
+
+```
+portal/ booking/ roomops/ billing/   public/index.php (routes), src/, bin/ (scheduled jobs), migrations/ (SQL)
+portal/views, portal/src/Web         pages and page logic;  portal/assets  Tailwind source
+lib/src/                             shared helpers
+scripts/                             migrate, seed-demo, dev-stack, backup, restore, gen-openapi, screenshots
+docker/, docker-compose.yml          nginx + PHP-FPM + MySQL
+tests/                               logic checks (tests/cases) and end-to-end suites (tests/e2e)
+docs/                                OpenAPI, AsyncAPI, screenshots
+```
+
+## Limits (what this is not)
+
+- **Tested databases:** the full suite passed on MySQL 8.0.22 and 9.7.4 (user-space servers in a sandbox). It was **not** run in this sandbox against the `mysql:8.0` Docker image, and `docker compose` itself was not run here (no Docker); the CI workflow does both on GitHub.
+- **Payments:** only mock mode was exercised end to end. Sandbox and live PayMongo calls (checkout creation, refunds) are written to the provider's documented shape but were not run against PayMongo.
+- **Email:** only the log fallback was exercised. The Resend call is written to Resend's documented API (with an idempotency key per job) but no real message was sent.
+- **Webhook age:** signatures are checked but webhook timestamps are not age-limited. Replays are harmless because provider event and payment ids are unique.
+- **One host.** Sessions, rate limits and jobs use the database and a loop, which is fine for one hotel and not meant for many servers. Two requests with the same new Idempotency-Key at the same instant are separated by the table's primary key: one gets an error and retries.
+- **Reports** are computed from the services when a page opens (a few seconds on years of data). Month-long availability needs an external uptime monitor; the report shows only whether the services are up now.
+- **Retention rules** (profiles 24 months after the last stay, abandoned-hold contacts 30 days) are not run automatically. Deletion is done per request by the privacy lead.
+- **No marketing email.** Marketing consent is stored separately from booking consent, but nothing sends offers.
+- **Access control is by role, not by hotel property.** The system serves one hotel.
+- **Accessibility** was built in and checked by eye and by keyboard reasoning, with no automated audit (such as axe) run. Colors were chosen for AA contrast but not measured.
+- **Browsers:** checked in Chrome only (desktop width, 768 and 375 px). Scroll-driven reveals need a recent Chrome or Safari and simply show the content in other browsers.
+- **Images** are CC0 stock photographs (credits in `docs/IMAGE-CREDITS.md`). The room photos are not of a real property. Replace `portal/public/assets/img/room-*.webp` with your own before launch.
 
 ## License
 

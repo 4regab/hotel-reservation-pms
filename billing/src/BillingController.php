@@ -18,7 +18,7 @@ use Lib\Uuid;
 /** Private REST routes for the Billing service. */
 final class BillingController
 {
-    public function __construct(private \PDO $pdo, private PayMongoAdapter $provider, private PaymentProcessor $payments, private FolioService $folios)
+    public function __construct(private \PDO $pdo, private PayMongoAdapter $provider, private PaymentProcessor $payments, private FolioService $folios, private FinanceService $finance)
     {
     }
 
@@ -83,14 +83,14 @@ final class BillingController
         $user = ServiceAuth::authenticate($r)['user'];
         Rbac::require($user['role'], 'charge.post');
         $b = $r->json();
-        return $this->folios->postCharge($this->uuid($p['id']), (string) ($b['description'] ?? ''), is_int($b['amountMinor'] ?? null) ? $b['amountMinor'] : 0, $user['accountId']);
+        return $this->folios->postCharge($this->uuid($p['id']), (string) ($b['description'] ?? ''), is_int($b['amountMinor'] ?? null) ? $b['amountMinor'] : 0, $user, $r->ip());
     }
 
     public function settle(Request $r, array $p): array
     {
         $user = ServiceAuth::authenticate($r)['user'];
         Rbac::require($user['role'], 'folio.settle');
-        return $this->folios->settle($this->uuid($p['id']), $user['accountId']);
+        return $this->folios->settle($this->uuid($p['id']), $user, (string) ($r->json()['method'] ?? 'CASH'), $r->ip());
     }
 
     public function requestRefund(Request $r): array
@@ -98,14 +98,14 @@ final class BillingController
         $user = ServiceAuth::authenticate($r)['user'];
         Rbac::require($user['role'], 'refund.request');
         $b = $r->json();
-        return $this->folios->requestRefund($this->uuid((string) ($b['paymentId'] ?? '')), is_int($b['amountMinor'] ?? null) ? $b['amountMinor'] : 0, $user['accountId'], (string) ($b['reason'] ?? 'MANUAL'));
+        return $this->folios->requestRefund($this->uuid((string) ($b['paymentId'] ?? '')), is_int($b['amountMinor'] ?? null) ? $b['amountMinor'] : 0, $user['accountId'], mb_substr((string) ($b['reason'] ?? 'MANUAL'), 0, 40), $user, $r->ip());
     }
 
     public function approveRefund(Request $r, array $p): array
     {
         $user = ServiceAuth::authenticate($r)['user'];
         Rbac::require($user['role'], 'refund.approve');
-        return $this->folios->approveRefund($this->uuid($p['id']), $user);
+        return $this->folios->approveRefund($this->uuid($p['id']), $user, $r->ip());
     }
 
     /** POST /internal/events: StayCheckedIn opens the bill, StayCheckedOut closes it, RefundRequested files a refund. */
@@ -123,7 +123,7 @@ final class BillingController
             case 'StayCheckedIn':
                 // Look the price up BEFORE the local transaction; if Booking is down the delivery is retried.
                 $res = Peer::ok('billing', 'booking', 'GET', '/internal/reservations/' . $this->uuid((string) ($d['reservationId'] ?? '')));
-                $apply = fn () => $this->folios->open($d['reservationId'], (int) $res['amountMinor'], (string) $res['currency']);
+                $apply = fn () => $this->folios->open($d['reservationId'], (int) $res['amountMinor'], (string) $res['currency'], (string) ($res['guarantee'] ?? 'NONE'));
                 break;
             case 'StayCheckedOut':
                 $apply = fn () => $this->folios->close((string) ($d['reservationId'] ?? ''));
@@ -133,6 +133,105 @@ final class BillingController
                 break;
         }
         return [200, ['status' => Inbox::once($this->pdo, $e['eventId'], $apply) ? 'applied' : 'duplicate']];
+    }
+
+    // ---- finance (cashier, manager)
+
+    public function payments(Request $r): array
+    {
+        $this->user($r, 'payment.read');
+        return $this->finance->payments($r->query);
+    }
+
+    public function reconcile(Request $r, array $p): array
+    {
+        $u = $this->user($r, 'payment.reconcile');
+        if ($p['id'] === 'batch') {
+            return $this->finance->reconcileUpTo((string) ($r->json()['date'] ?? ''), $u, $r->ip());
+        }
+        return $this->finance->reconcile($this->uuid($p['id']), $u, $r->ip());
+    }
+
+    public function refunds(Request $r): array
+    {
+        $this->user($r, 'refund.read');
+        return $this->finance->refunds((string) ($r->query['status'] ?? ''));
+    }
+
+    public function rejectRefund(Request $r, array $p): array
+    {
+        $u = $this->user($r, 'refund.approve');
+        return $this->finance->rejectRefund($this->uuid($p['id']), (string) ($r->json()['note'] ?? ''), $u, $r->ip());
+    }
+
+    /** POST /internal/reservations/{id}/onsite-payment : walk-in pays at the desk for a live hold. */
+    public function onsitePayment(Request $r, array $p): array
+    {
+        $u = $this->user($r, 'payment.onsite');
+        $rid = $this->uuid($p['id']);
+        $res = Peer::ok('billing', 'booking', 'GET', "/internal/reservations/{$rid}", $u);
+        if ($res['status'] !== 'HELD' || strtotime((string) $res['holdExpiresAt']) <= time()) {
+            throw new ApiException(409, 'RESERVATION_NOT_PAYABLE', 'Only an unexpired hold can be paid for');
+        }
+        return $this->finance->onsitePayment($res, (string) ($r->json()['method'] ?? 'CASH'), $u, $r->ip());
+    }
+
+    public function receipt(Request $r, array $p): array
+    {
+        $this->user($r, 'folio.read');
+        return [200, $this->finance->receipt($this->uuid($p['id']))];
+    }
+
+    public function exportRequest(Request $r): array
+    {
+        $u = $this->user($r, 'export.request');
+        $b = $r->json();
+        return $this->finance->requestExport((string) ($b['from'] ?? ''), (string) ($b['to'] ?? ''), $u, $r->ip());
+    }
+
+    public function exports(Request $r): array
+    {
+        $this->user($r, 'export.read');
+        return $this->finance->exports();
+    }
+
+    public function exportDecide(Request $r, array $p, bool $approve): array
+    {
+        $u = $this->user($r, 'export.approve');
+        return $this->finance->decideExport($this->uuid($p['id']), $approve, $u, $r->ip());
+    }
+
+    /** GET /internal/exports/{id}/download : CSV text wrapped in JSON (the portal serves the file). */
+    public function exportDownload(Request $r, array $p): array
+    {
+        $u = $this->user($r, 'export.download');
+        [$csv, $name, $sum] = $this->finance->download($this->uuid($p['id']), $u, $r->ip());
+        return [200, ['filename' => $name, 'checksum' => $sum, 'csv' => $csv]];
+    }
+
+    public function revenue(Request $r): array
+    {
+        $this->user($r, 'reports.read');
+        return $this->finance->revenue($r->query);
+    }
+
+    public function audit(Request $r): array
+    {
+        $this->user($r, 'audit.read');
+        return $this->finance->audit($r->query);
+    }
+
+    public function outbox(Request $r): array
+    {
+        $this->user($r, 'ops.read');
+        return $this->finance->outbox();
+    }
+
+    private function user(Request $r, string $action): array
+    {
+        $u = ServiceAuth::authenticate($r)['user'];
+        Rbac::require($u['role'], $action);
+        return $u;
     }
 
     private function handleWebhook(string $rawBody, ?string $signature): array

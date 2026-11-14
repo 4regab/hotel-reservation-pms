@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Booking;
 
 use Lib\ApiException;
+use Lib\Audit;
 use Lib\Dates;
 use Lib\InsufficientStock;
 use Lib\Inventory;
@@ -28,9 +29,9 @@ final class BookingWorkflow
     }
 
     /** Create a 10-minute priced hold. Saves all nights or none. */
-    public function hold(string $accountId, array $quote, ?string $onBehalfGuestId, array $guest, int $now): array
+    public function hold(string $accountId, array $quote, ?string $onBehalfGuestId, array $guest, int $now, array $extra = []): array
     {
-        return Tx::run($this->pdo, function () use ($accountId, $quote, $onBehalfGuestId, $guest, $now): array {
+        return Tx::run($this->pdo, function () use ($accountId, $quote, $onBehalfGuestId, $guest, $now, $extra): array {
             $nights = Dates::nights($quote['checkIn'], $quote['checkOut']);
             if ($onBehalfGuestId !== null) {
                 if (!$this->repo->guestExists($onBehalfGuestId)) {
@@ -49,6 +50,7 @@ final class BookingWorkflow
                 'id' => $id, 'guestId' => $guestId, 'roomTypeId' => $quote['roomTypeId'], 'checkIn' => $quote['checkIn'], 'checkOut' => $quote['checkOut'],
                 'quantity' => $quote['quantity'], 'quoteMinor' => $quote['totalMinor'], 'nightlyMinor' => $quote['nightlyMinor'], 'currency' => $quote['currency'],
                 'freeCancelHours' => CancellationPolicy::FREE_HOURS, 'holdExpiresAt' => Dates::sqlUtc($expires),
+                'source' => $onBehalfGuestId !== null ? 'WALK_IN' : 'DIRECT', 'adults' => $extra['adults'] ?? 1, 'specialRequests' => $extra['specialRequests'] ?? null,
             ]);
             $this->repo->insertAllocations($id, $quote['roomTypeId'], $nights, $quote['quantity'], 'HELD');
             return [201, [
@@ -76,15 +78,18 @@ final class BookingWorkflow
     }
 
     /** Manager-approved pay-at-hotel guarantee confirms without a payment event. */
-    public function approveGuarantee(string $reservationId, int $now): array
+    public function approveGuarantee(string $reservationId, int $now, ?array $user = null): array
     {
-        return Tx::run($this->pdo, function () use ($reservationId, $now): array {
+        return Tx::run($this->pdo, function () use ($reservationId, $now, $user): array {
             $r = $this->repo->lock($reservationId) ?? throw new ApiException(404, 'NOT_FOUND');
             S::assert($r['status'], S::CONFIRMED);
             if (strtotime($r['hold_expires_at'] . ' UTC') <= $now) {
                 throw new ApiException(409, 'HOLD_EXPIRED', 'The hold has run out; make a new booking');
             }
             $this->confirmLocked($r, 'PAY_AT_HOTEL', false);
+            if ($user !== null) {
+                Audit::record($this->pdo, $user, 'reservation.guarantee_approved', 'reservation', $reservationId, ['code' => $r['code']]);
+            }
             return [200, ['reservationId' => $reservationId, 'status' => S::CONFIRMED, 'guarantee' => 'PAY_AT_HOTEL']];
         });
     }
@@ -105,20 +110,25 @@ final class BookingWorkflow
             $penalty = 0;
             if ($r['status'] === S::CONFIRMED) {
                 $penalty = $waivePenalty ? 0 : CancellationPolicy::penaltyMinor($r['check_in'], $now, (int) $r['free_cancel_hours'], (int) $r['nightly_minor'], (int) $r['quantity']);
+                $penalty = min($penalty, (int) $r['quote_minor']);
                 Outbox::add($this->pdo, 'ReservationCancelled', $reservationId, $version, $reservationId, ['reservationId' => $reservationId, 'penaltyMinor' => $penalty, 'currency' => $r['currency']]);
                 $refund = (int) $r['quote_minor'] - $penalty;
+                $this->pdo->prepare('UPDATE reservation SET cancelled_at = UTC_TIMESTAMP(), penalty_minor = ? WHERE reservation_id = ?')->execute([$penalty, $reservationId]);
                 if ($r['guarantee'] === 'PAID' && $refund > 0) {
                     Outbox::add($this->pdo, 'RefundRequested', $reservationId, $version, $reservationId, ['reservationId' => $reservationId, 'amountMinor' => $refund, 'currency' => $r['currency'], 'reason' => 'CANCELLATION']);
                 }
+            }
+            if ($r['status'] === S::HELD) {
+                $this->pdo->prepare('UPDATE reservation SET cancelled_at = UTC_TIMESTAMP() WHERE reservation_id = ?')->execute([$reservationId]);
             }
             return [200, ['reservationId' => $reservationId, 'status' => S::CANCELLED, 'penaltyMinor' => $penalty, 'currency' => $r['currency']]];
         });
     }
 
     /** PaymentCaptured from Billing: confirm if stock is secured, otherwise ask Billing for a refund. */
-    public function onPaymentCaptured(array $d): void
+    public function onPaymentCaptured(array $d, ?string $occurredAt = null): void
     {
-        Tx::run($this->pdo, function () use ($d): void {
+        Tx::run($this->pdo, function () use ($d, $occurredAt): void {
             $r = $this->repo->lock($d['reservationId']);
             if ($r === null) {
                 Log::info('payment for unknown reservation', ['reservationId' => $d['reservationId']]);
@@ -140,11 +150,11 @@ final class BookingWorkflow
                 return;
             }
             if ($outcome === PaymentOutcome::CONFIRM) {
-                $this->confirmLocked($r, 'PAID', false);
+                $this->confirmLocked($r, 'PAID', false, $occurredAt);
                 return;
             }
             try {
-                $this->confirmLocked($r, 'PAID', true);   // expired: needs a fresh allocation
+                $this->confirmLocked($r, 'PAID', true, $occurredAt);   // expired: needs a fresh allocation
             } catch (InsufficientStock) {
                 $refund('LATE_NO_STOCK');                 // stays EXPIRED, exactly one refund request
             }
@@ -180,8 +190,54 @@ final class BookingWorkflow
         });
     }
 
+    /** Reception asks the manager to approve a pay-at-hotel guarantee for a live hold. */
+    public function requestGuarantee(string $reservationId, array $user, int $now): array
+    {
+        return Tx::run($this->pdo, function () use ($reservationId, $user, $now): array {
+            $r = $this->repo->lock($reservationId) ?? throw new ApiException(404, 'NOT_FOUND');
+            if ($r['status'] !== S::HELD || strtotime($r['hold_expires_at'] . ' UTC') <= $now) {
+                throw new ApiException(409, 'RESERVATION_NOT_PAYABLE', 'Only an unexpired hold can ask for a guarantee');
+            }
+            $this->pdo->prepare('UPDATE reservation SET guarantee_requested = 1 WHERE reservation_id = ?')->execute([$reservationId]);
+            Audit::record($this->pdo, $user, 'reservation.guarantee_requested', 'reservation', $reservationId, ['code' => $r['code']]);
+            return [200, ['reservationId' => $reservationId, 'guaranteeRequested' => true]];
+        });
+    }
+
+    /**
+     * Mark a confirmed reservation that never arrived as NO_SHOW. The first night is kept (unless a manager waives it),
+     * unused later nights go back on sale, and a paid booking asks Billing to refund the rest.
+     */
+    public function noShow(string $reservationId, array $user, bool $waive, int $now): array
+    {
+        return Tx::run($this->pdo, function () use ($reservationId, $user, $waive, $now): array {
+            $r = $this->repo->lock($reservationId) ?? throw new ApiException(404, 'NOT_FOUND');
+            S::assert($r['status'], S::NO_SHOW);
+            if (!CancellationPolicy::noShowDue($r['check_in'], $now)) {
+                throw new ApiException(409, 'NOT_DUE', 'A no-show can be recorded after ' . CancellationPolicy::NO_SHOW_HOUR . ':00 Manila time on the arrival date');
+            }
+            $today = Dates::manilaToday($now);
+            $nights = array_values(array_filter(Dates::nights($r['check_in'], $r['check_out']), fn ($n) => $n >= $today));
+            if ($nights !== []) {
+                $rows = Inventory::release($this->inv->lock($r['room_type_id'], $nights), $nights, (int) $r['quantity'], 'confirmed');
+                $this->inv->save($r['room_type_id'], $rows, $nights);
+            }
+            $this->repo->setAllocationState($reservationId, 'RELEASED');
+            $version = $this->repo->setStatus($r, S::NO_SHOW);
+            $penalty = $waive ? 0 : min((int) $r['quote_minor'], (int) $r['nightly_minor'] * (int) $r['quantity']);
+            $this->pdo->prepare('UPDATE reservation SET no_show_at = UTC_TIMESTAMP(), penalty_minor = ? WHERE reservation_id = ?')->execute([$penalty, $reservationId]);
+            Outbox::add($this->pdo, 'ReservationNoShow', $reservationId, $version, $reservationId, ['reservationId' => $reservationId, 'penaltyMinor' => $penalty, 'currency' => $r['currency']]);
+            $refund = (int) $r['quote_minor'] - $penalty;
+            if ($r['guarantee'] === 'PAID' && $refund > 0) {
+                Outbox::add($this->pdo, 'RefundRequested', $reservationId, $version, $reservationId, ['reservationId' => $reservationId, 'amountMinor' => $refund, 'currency' => $r['currency'], 'reason' => 'NO_SHOW']);
+            }
+            Audit::record($this->pdo, $user, 'reservation.no_show', 'reservation', $reservationId, ['code' => $r['code'], 'penaltyMinor' => $penalty, 'waived' => $waive]);
+            return [200, ['reservationId' => $reservationId, 'status' => S::NO_SHOW, 'penaltyMinor' => $penalty, 'currency' => $r['currency']]];
+        });
+    }
+
     /** Move held stock to confirmed (or take fresh confirmed stock for an expired hold), mark CONFIRMED, queue the event. */
-    private function confirmLocked(array $r, string $guarantee, bool $fresh): void
+    private function confirmLocked(array $r, string $guarantee, bool $fresh, ?string $paidAt = null): void
     {
         $nights = Dates::nights($r['check_in'], $r['check_out']);
         $qty = (int) $r['quantity'];
@@ -191,6 +247,7 @@ final class BookingWorkflow
         $this->inv->save($r['room_type_id'], $rows, $nights);
         $this->repo->insertAllocations($r['reservation_id'], $r['room_type_id'], $nights, $qty, 'CONFIRMED');
         $version = $this->repo->setStatus($r, S::CONFIRMED, $guarantee);
+        $this->repo->markConfirmed($r['reservation_id'], $paidAt !== null ? Dates::sqlUtc((int) strtotime($paidAt)) : null);
         Outbox::add($this->pdo, 'ReservationConfirmed', $r['reservation_id'], $version, $r['reservation_id'], [
             'reservationId' => $r['reservation_id'], 'roomTypeId' => $r['room_type_id'], 'checkIn' => $r['check_in'], 'checkOut' => $r['check_out'],
             'quantity' => $qty, 'amountMinor' => (int) $r['quote_minor'], 'currency' => $r['currency'],
