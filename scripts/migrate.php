@@ -45,6 +45,14 @@ foreach ($services as $svc) {
     $q = $admin->quote($user) . '@' . $admin->quote($hostPattern);
     $admin->exec("CREATE USER IF NOT EXISTS {$q} IDENTIFIED BY " . $admin->quote($pass));
     $admin->exec("ALTER USER {$q} IDENTIFIED BY " . $admin->quote($pass));
-    $admin->exec("GRANT SELECT, INSERT, UPDATE, DELETE ON {$ident($name)}.* TO {$q}");
+    // Per-table grants so audit_log stays append-only (no UPDATE or DELETE) and schema_migrations is untouchable.
+    $admin->exec("REVOKE ALL PRIVILEGES, GRANT OPTION FROM {$q}");
+    foreach ($admin->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN) as $table) {
+        if ($table === 'schema_migrations') {
+            continue;
+        }
+        $privs = $table === 'audit_log' ? 'SELECT, INSERT' : 'SELECT, INSERT, UPDATE, DELETE';
+        $admin->exec("GRANT {$privs} ON {$ident($name)}.{$ident($table)} TO {$q}");
+    }
 }
 echo "migrations up to date\n";
