@@ -76,6 +76,81 @@
     if (msg && !window.confirm(msg)) ev.preventDefault();
   });
 
+  // Test checkout: card number spacing, brand, expiry slash, and checks before sending. The server checks again.
+  document.querySelectorAll('[data-card-form]').forEach(function (form) {
+    var num = form.querySelector('[data-card-number]');
+    var exp = form.querySelector('[data-card-expiry]');
+    var brand = form.querySelector('[data-card-brand]');
+    function digits(v) { return v.replace(/\D+/g, ''); }
+    function luhn(n) {
+      var sum = 0;
+      for (var i = 0; i < n.length; i++) {
+        var d = +n[n.length - 1 - i];
+        if (i % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
+        sum += d;
+      }
+      return n.length >= 12 && sum % 10 === 0;
+    }
+    num.addEventListener('input', function () {
+      var n = digits(num.value).slice(0, 16);
+      num.value = n.replace(/(\d{4})(?=\d)/g, '$1 ');
+      brand.textContent = /^4/.test(n) ? 'Visa' : (/^(5[1-5]|2(2[2-9]|[3-6]\d|7[01]|720))/.test(n) ? 'Mastercard' : '');
+    });
+    exp.addEventListener('input', function () {
+      var n = digits(exp.value).slice(0, 4);
+      exp.value = n.length > 2 ? n.slice(0, 2) + '/' + n.slice(2) : n;
+    });
+    form.addEventListener('submit', function (ev) {
+      var problems = [];
+      var n = digits(num.value);
+      var listed = (form.getAttribute('data-test-cards') || '').split(',');
+      if (n.length !== 16 || (!luhn(n) && listed.indexOf(n) < 0)) problems.push([num, 'Enter a valid 16-digit card number.']);
+      var m = /^(\d{2})\/(\d{2})$/.exec(exp.value);
+      var now = new Date();
+      if (!m || +m[1] < 1 || +m[1] > 12) problems.push([exp, 'Enter the expiry date as MM/YY.']);
+      else if (new Date(2000 + +m[2], +m[1], 0, 23, 59) < now) problems.push([exp, 'This expiry date is in the past.']);
+      var cvc = form.querySelector('[name=cardCvc]');
+      if (!/^\d{3}$/.test(cvc.value.trim())) problems.push([cvc, 'Enter the 3-digit security code from the back of the card.']);
+      var name = form.querySelector('[name=cardName]');
+      if (!name.value.trim()) problems.push([name, 'Enter the name on the card.']);
+      form.querySelectorAll('[data-client-error]').forEach(function (p) { p.remove(); });
+      form.querySelectorAll('[aria-invalid]').forEach(function (i) { i.removeAttribute('aria-invalid'); });
+      if (!problems.length) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      problems.forEach(function (pr) {
+        var p = document.createElement('p');
+        p.className = 'mt-1.5 text-sm font-medium text-red-800';
+        p.id = 'ce-' + pr[0].id;
+        p.setAttribute('data-client-error', '');
+        p.textContent = pr[1];
+        (pr[0].closest('.relative') || pr[0]).insertAdjacentElement('afterend', p);
+        pr[0].setAttribute('aria-invalid', 'true');
+        pr[0].setAttribute('aria-describedby', p.id);
+      });
+      problems[0][0].focus();
+    }, true);
+  });
+
+  // Test checkout: show a short "processing" state before the payment is sent, like a hosted checkout does.
+  document.querySelectorAll('form[data-processing]').forEach(function (form) {
+    var panel = document.querySelector('[data-processing-panel]');
+    form.addEventListener('submit', function (ev) {
+      if (form.dataset.sending || !panel) return;
+      ev.preventDefault();
+      form.dataset.sending = '1';
+      var btn = ev.submitter;
+      if (btn && btn.name) {
+        var keep = document.createElement('input');
+        keep.type = 'hidden'; keep.name = btn.name; keep.value = btn.value;
+        form.appendChild(keep);
+      }
+      panel.classList.remove('hidden');
+      panel.classList.add('flex');
+      setTimeout(function () { form.submit(); }, 1200);
+    });
+  });
+
   document.querySelectorAll('[data-print]').forEach(function (b) {
     b.addEventListener('click', function () { window.print(); });
   });

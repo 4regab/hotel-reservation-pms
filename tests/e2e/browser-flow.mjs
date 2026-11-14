@@ -38,7 +38,20 @@ for (const [w, h, name] of widths) {
   const countdown = await page.textContent('[data-countdown-text]');
   await shot('4-pay');
   await Promise.all([page.waitForURL('**/mock/paymongo/checkout/**'), page.click('button:has-text("securely")')]);
-  await Promise.all([page.waitForURL('**/book/confirmation/**'), page.click('button:has-text("Pay now")')]);
+  // The test checkout: a declined card first (back to the pay page, hold still counting), then the success card.
+  await page.fill('#cc-number', '4111111111111111');
+  await page.fill('#cc-exp', '1230');
+  await page.fill('#cc-cvc', '123');
+  await page.fill('#cc-name', 'Flow Tester');
+  await Promise.all([page.waitForURL('**/book/pay/**'), page.click('[data-card-form] button')]);
+  await page.waitForSelector('text=declined');
+  await Promise.all([page.waitForURL('**/mock/paymongo/checkout/**'), page.click('button:has-text("securely")')]);
+  await page.fill('#cc-number', '4343434343434345');
+  await page.fill('#cc-exp', '1230');
+  await page.fill('#cc-cvc', '123');
+  await page.fill('#cc-name', 'Flow Tester');
+  await shot('4b-checkout');
+  await Promise.all([page.waitForURL('**/book/confirmation/**'), page.click('[data-card-form] button')]);
   await page.waitForSelector('text=Your booking is confirmed', { timeout: 40000 });
   await shot('5-confirmed');
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

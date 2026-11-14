@@ -163,7 +163,7 @@ Staff also need the 6-digit code from the demo authenticator secret `JBSWY3DPEHP
 php -r 'require "autoload.php"; echo Portal\Totp::code("JBSWY3DPEHPK3PXP", time()), "\n";'
 ```
 
-Payments run in **mock mode**. The pay button opens a demo checkout page on the site itself, so no PayMongo keys are needed.
+Payments run in **mock mode** (see [Payment modes](#payment-modes)), so no PayMongo keys are needed.
 No email is sent unless you export `RESEND_API_KEY`. Each email is saved in the `email_log` table of `portal_db` instead. Sign in as `it@example.test` and open **System health** to read them.
 
 ### 6. Run the tests
@@ -190,6 +190,34 @@ To rebuild the CSS after changing styles: `npm install && npm run build:css`.
 | `Call to undefined function mb_strlen()` | The `mbstring` extension is missing (step 1). |
 
 
+## Payment modes
+
+Set `PAYMONGO_MODE` to choose how guests pay.
+
+**`mock` (the default): a test checkout on the hotel site.**
+No PayMongo account or keys are needed, and no money ever moves. The pay button opens a checkout page with a yellow "TEST MODE" banner. It shows the booking, the amount, and three ways to pay:
+
+- **Card.** A normal card form. It only accepts PayMongo's published test cards and declines any other number. Use any future expiry date and any 3-digit code.
+
+  | Card number | What happens |
+  | --- | --- |
+  | `4343 4343 4343 4345`, `4571 7360 0000 0075`, `5123 0000 0000 0002`, `5123 0000 0000 0001` | Payment succeeds |
+  | `4120 0000 0000 0007` | Asks you to authenticate, then you choose **Approve** or **Fail** |
+  | `4200 0000 0000 0018` | Declined: expired card |
+  | `4300 0000 0000 0017` | Declined: wrong security code |
+  | `5100 0000 0000 0198` | Declined: insufficient funds |
+  | `4111 1111 1111 1111` | Declined by the bank |
+
+  Source: [PayMongo testing documentation](https://docs.paymongo.com/docs/payment-acceptance-testing). The same list is in a "Test cards" box on the checkout page.
+- **GCash or Maya.** Enter any Philippine mobile number, then choose **Authorize test payment** or **Fail test payment**.
+
+After a short "processing" screen, a successful payment goes to the confirmation page. A failed or cancelled one goes back to the payment page with a message, and the 10-minute hold keeps counting down.
+Behind the scenes, the test checkout sends a signed PayMongo-style notice (`checkout_session.payment.paid` or `payment.failed`) to the site's real webhook address, `/v1/webhooks/paymongo`. So the booking is confirmed the same way as with real PayMongo: only when a correctly signed notice arrives.
+Card numbers, expiry dates and security codes are never saved or written to a log. Only the last four digits travel on, inside the notice.
+
+**`sandbox`: PayMongo's real test checkout.**
+Put your PayMongo **test** keys in `.env` (`PAYMONGO_SECRET_KEY`, which starts with `sk_test_`, and `PAYMONGO_WEBHOOK_SECRET`). Guests are then sent to PayMongo's own hosted checkout page, where the same test cards work. In PayMongo's dashboard, point the webhook at `<PUBLIC_BASE_URL>/v1/webhooks/paymongo` for the `checkout_session.payment.paid` event. PayMongo must be able to reach that address, so this mode needs a public URL.
+
 ## Settings (`.env`, used by Docker Compose)
 
 | Variable | Meaning |
@@ -199,7 +227,7 @@ To rebuild the CSS after changing styles: `npm install && npm run build:css`.
 | `TOKEN_<FROM>_TO_<TO>` | Twelve service-to-service secrets, one per caller and callee pair. |
 | `QUOTE_SECRET` | Signs price quotes (Booking only). |
 | `PUBLIC_BASE_URL`, `HTTP_PORT`, `COOKIE_SECURE` | Public address, published port, and whether the session cookie is HTTPS-only. |
-| `PAYMONGO_MODE` | `mock` (offline demo checkout page) or `sandbox` (PayMongo test mode). |
+| `PAYMONGO_MODE` | `mock` (the test checkout on this site) or `sandbox` (PayMongo's real test checkout). See [Payment modes](#payment-modes). |
 | `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET` | From your PayMongo dashboard. Point the webhook at `<PUBLIC_BASE_URL>/v1/webhooks/paymongo` for the `checkout_session.payment.paid` event. |
 | `RESEND_API_KEY`, `MAIL_FROM` | Email through Resend. With no key, emails are written to the log table instead (visible under System health). |
 | `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_PASSWORD`, `ADMIN_TOTP_SECRET` | First IT account, created only if none exists. Empty password or secret means generated and printed once. |

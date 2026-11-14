@@ -534,15 +534,33 @@ paths:
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
-  /v1/mock/paymongo/pay:
-    post:
-      operationId: postMockPaymongoPay
+  /v1/mock/paymongo/sessions/{id}:
+    get:
+      operationId: getMockPaymongoSessionsId
       tags: [Finance]
-      summary: "Demo mode only: act as the payment provider and pay a checkout session"
+      summary: "Demo mode only: the pending checkout session shown on the test checkout page"
+      description: "Who: guest, reception, manager."
+      security:
+        - sessionCookie: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /v1/mock/paymongo/sessions/{id}/attempts:
+    post:
+      operationId: postMockPaymongoSessionsIdAttempts
+      tags: [Finance]
+      summary: "Demo mode only: try a PayMongo test card or a test e-wallet answer; the outcome is sent as a signed webhook"
       description: "Who: guest, reception, manager. Needs X-CSRF-Token."
       security:
         - sessionCookie: []
       parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
         - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
       requestBody:
         content:

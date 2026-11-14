@@ -177,22 +177,73 @@ final class PublicSite
         return [200, json_encode(['status' => $r['status']]), ['Content-Type' => 'application/json', 'Cache-Control' => 'no-store']];
     }
 
-    /** The stand-in for PayMongo's hosted page (mock mode only). Real card details are never typed here. */
+    /**
+     * The test checkout that stands in for PayMongo's hosted page (mock mode only). It accepts only PayMongo's
+     * published test cards and test e-wallet answers. Card details are passed to Billing for this one request and
+     * are never stored, logged or shown again.
+     */
     public static function mockCheckout(Ctx $c, string $sessionId): array
     {
-        if ((getenv('PAYMONGO_MODE') ?: 'mock') !== 'mock') {
-            return View::error($c, 404, 'Page not found', 'This page does not exist.');
+        [$s, $r] = self::mockSessionFor($c, $sessionId);
+        if ($s === null) {
+            return View::error($c, 404, 'Payment session ended', 'This test payment session is no longer open. Go back to your booking to start again.');
         }
-        $c->require('guest');
-        return View::page($c, 'mock_checkout', ['sessionId' => $sessionId, 'reservationId' => $c->q('reservation')], 'Secure payment (demo)');
+        if ($c->q('cancel') === '1') {
+            $c->flash('error', 'You cancelled the payment. Your room is still held until the timer runs out.');
+            return View::redirect('/book/pay/' . $r['reservationId']);
+        }
+        $method = in_array($c->q('method'), ['card', 'gcash', 'paymaya'], true) ? $c->q('method') : 'card';
+        return self::mockPage($c, $s, $r, $method, 'form');
     }
 
     public static function mockPay(Ctx $c, string $sessionId): array
     {
-        $rid = $c->post('reservationId');
-        return $c->act(function () use ($c, $sessionId): void {
-            $c->svc('billing', 'POST', '/internal/mock/paymongo/pay', ['sessionId' => $sessionId]);
-        }, '', '/book/confirmation/' . $rid . '?returned=1', '/book/pay/' . $rid);
+        $c->checkCsrf();
+        [$s, $r] = self::mockSessionFor($c, $sessionId);
+        if ($s === null) {
+            return View::error($c, 404, 'Payment session ended', 'This test payment session is no longer open. Go back to your booking to start again.');
+        }
+        $rid = (string) $r['reservationId'];
+        $method = $c->post('method');
+        $body = $method === 'card'
+            ? ['method' => 'card', 'cardNumber' => $c->post('cardNumber'), 'cardExpiry' => $c->post('cardExpiry'), 'cardCvc' => $c->post('cardCvc'), 'cardName' => $c->post('cardName'),
+               'threeDsToken' => $c->post('threeDsToken'), 'decision' => $c->post('decision')]
+            : ['method' => $method, 'phone' => $c->post('phone'), 'decision' => $c->post('decision')];
+        [$status, $d] = $c->svcRaw('billing', 'POST', '/internal/mock/paymongo/sessions/' . rawurlencode($sessionId) . '/attempts', $body);
+        $body = null;   // drop the card details as soon as Billing has answered
+        if ($status === 422 && isset($d['error']['fields'])) {
+            return self::mockPage($c, $s, $r, in_array($method, ['card', 'gcash', 'paymaya'], true) ? $method : 'card', 'form', (array) $d['error']['fields'],
+                ['cardName' => $c->post('cardName'), 'phone' => $c->post('phone')], 422);
+        }
+        if ($status === 200 && ($d['outcome'] ?? '') === '3ds') {
+            return self::mockPage($c, $s, $r, 'card', '3ds', [], ['threeDsToken' => (string) $d['threeDsToken'], 'last4' => (string) $d['last4'], 'brand' => (string) $d['brand']]);
+        }
+        if ($status === 200 && ($d['outcome'] ?? '') === 'paid') {
+            return View::redirect('/book/confirmation/' . $rid . '?returned=1');
+        }
+        $c->flash('error', $status === 200 ? $d['message'] . ' Your room is still held until the timer runs out.' : (string) ($d['error']['message'] ?? 'The test payment did not go through. Please try again.'));
+        return View::redirect('/book/pay/' . $rid);
+    }
+
+    /** @return array{0:?array,1:?array} the pending session and the guest's own reservation, or nulls */
+    private static function mockSessionFor(Ctx $c, string $sessionId): array
+    {
+        if ((getenv('PAYMONGO_MODE') ?: 'mock') !== 'mock') {
+            throw new ApiException(404, 'NOT_FOUND');
+        }
+        $c->require('guest');
+        [$status, $s] = $c->svcRaw('billing', 'GET', '/internal/mock/paymongo/sessions/' . rawurlencode($sessionId));
+        if ($status !== 200) {
+            return [null, null];
+        }
+        // Booking answers 404 when the reservation is not this guest's, so nobody can pay or see someone else's booking here.
+        return [$s, $c->svc('booking', 'GET', '/internal/reservations/' . $s['reservationId'])];
+    }
+
+    private static function mockPage(Ctx $c, array $s, array $r, string $method, string $step, array $errors = [], array $keep = [], int $status = 200): array
+    {
+        return View::page($c, 'mock_checkout', ['s' => $s, 'r' => $r, 'method' => $method, 'step' => $step, 'errors' => $errors, 'keep' => $keep,
+            'secondsLeft' => max(0, strtotime((string) $r['holdExpiresAt']) - time()), 'cards' => \Billing\MockCheckout::TEST_CARDS], 'Test checkout', $status, 'layout_checkout');
     }
 
     // ---- sign in, register, reset ------------------------------------------------------------------------

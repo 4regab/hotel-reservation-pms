@@ -80,7 +80,8 @@ final class Gateway
         ['GET', '/v1/reports/occupancy', 'booking', '/internal/reports/occupancy', 'reports.read', 'session'],
         ['GET', '/v1/reports/revenue', 'billing', '/internal/reports/revenue', 'reports.read', 'session'],
         ['GET', '/v1/reports/operations', 'roomops', '/internal/reports/ops', 'reports.read', 'session'],
-        ['POST',  '/v1/mock/paymongo/pay',                     'billing', '/internal/mock/paymongo/pay',                     'checkout.start',        'session'],
+        ['GET',   '/v1/mock/paymongo/sessions/{id}',           'billing', '/internal/mock/paymongo/sessions/{id}',           'checkout.start',        'session'],
+        ['POST',  '/v1/mock/paymongo/sessions/{id}/attempts',  'billing', '/internal/mock/paymongo/sessions/{id}/attempts',  'checkout.start',        'session'],
     ];
 
     /** @param \Closure():Auth $auth @param \Closure():RateLimit $limit  (lazy, so the database connects only when a route needs it) */

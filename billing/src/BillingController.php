@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Billing;
 
 use Lib\ApiException;
+use Lib\Http;
 use Lib\Idempotency;
 use Lib\Inbox;
 use Lib\Log;
@@ -11,6 +12,7 @@ use Lib\PdoIdempotencyStore;
 use Lib\Peer;
 use Lib\Rbac;
 use Lib\Request;
+use Lib\Routing;
 use Lib\ServiceAuth;
 use Lib\Tx;
 use Lib\Uuid;
@@ -55,20 +57,78 @@ final class BillingController
         return $this->handleWebhook($r->body, $r->header('Paymongo-Signature'));
     }
 
-    /** Demo only (PAYMONGO_MODE=mock): act as the provider and send a signed "paid" webhook for a session. */
-    public function mockPay(Request $r): array
+    /** Demo only (PAYMONGO_MODE=mock): the pending checkout session, for the demo checkout page. */
+    public function mockSession(Request $r, array $p): array
+    {
+        $s = $this->mockPending($r, (string) $p['id']);
+        return [200, ['sessionId' => (string) $p['id'], 'reservationId' => $s['reservation_id'], 'amountMinor' => (int) $s['amount_minor'], 'currency' => $s['currency']]];
+    }
+
+    /**
+     * Demo only (PAYMONGO_MODE=mock): one payment attempt on the demo checkout, judged like PayMongo's test mode.
+     * A final outcome is sent as a signed PayMongo-format event to the portal's public webhook route, so the
+     * signature check, idempotency and late-payment rules run exactly as for the real provider.
+     * Card details are used only inside this request. They are never stored, logged or returned; only the last four digits travel on.
+     */
+    public function mockAttempt(Request $r, array $p): array
+    {
+        $sessionId = (string) $p['id'];
+        $s = $this->mockPending($r, $sessionId);
+        $b = $r->json();
+        $method = (string) ($b['method'] ?? '');
+        $secret = $this->provider->webhookSecret();
+        $now = time();
+        $last4 = '';
+        if ($method === 'card') {
+            $token = (string) ($b['threeDsToken'] ?? '');
+            if ($token !== '') {
+                $last4 = MockCheckout::checkThreeDsToken($token, $sessionId, $secret, $now) ?? throw new ApiException(422, 'VALIDATION_FAILED', 'The authentication step expired. Enter the card again.');
+                $outcome = ($b['decision'] ?? '') === 'approve' ? 'paid' : '3ds_failed';
+            } else {
+                $number = (string) ($b['cardNumber'] ?? '');
+                $errors = MockCheckout::validateCard($number, (string) ($b['cardExpiry'] ?? ''), (string) ($b['cardCvc'] ?? ''), (string) ($b['cardName'] ?? ''), $now);
+                if ($errors) {
+                    return [422, ['error' => ['code' => 'VALIDATION_FAILED', 'message' => 'Check the card details.', 'fields' => $errors]]];
+                }
+                $last4 = substr(MockCheckout::digits($number), -4);
+                $outcome = MockCheckout::cardOutcome($number);
+                if ($outcome === '3ds') {
+                    return [200, ['outcome' => '3ds', 'last4' => $last4, 'brand' => MockCheckout::brand($number), 'threeDsToken' => MockCheckout::threeDsToken($sessionId, $last4, $secret, $now)]];
+                }
+            }
+        } elseif ($method === 'gcash' || $method === 'paymaya') {
+            if (!MockCheckout::validPhone((string) ($b['phone'] ?? ''))) {
+                return [422, ['error' => ['code' => 'VALIDATION_FAILED', 'message' => 'Check the mobile number.', 'fields' => ['phone' => 'Enter a mobile number like 0917 123 4567.']]]];
+            }
+            $outcome = ($b['decision'] ?? '') === 'authorize' ? 'paid' : 'wallet_failed';
+        } else {
+            throw new ApiException(422, 'VALIDATION_FAILED', 'Choose card, GCash or Maya.');
+        }
+
+        $event = $outcome === 'paid'
+            ? PayMongoAdapter::mockPaidEvent($sessionId, $s['reservation_id'], (int) $s['amount_minor'], $s['currency'], $method, $last4)
+            : PayMongoAdapter::mockFailedEvent($sessionId, $s['reservation_id'], (int) $s['amount_minor'], $s['currency'], $method, $outcome);
+        $body = (string) json_encode($event);
+        [$status, $text] = Http::call('POST', Routing::url('portal') . '/v1/webhooks/paymongo',
+            ['Content-Type: application/json', 'Paymongo-Signature: ' . PayMongoAdapter::signatureHeader($body, $secret, $now)], $body, 10);
+        $ack = json_decode($text, true);
+        if ($status !== 200 || !is_array($ack)) {
+            throw new ApiException(503, 'PAYMENT_PROVIDER_UNAVAILABLE', 'The test payment could not be delivered. Please try again.');
+        }
+        return [200, ['outcome' => $outcome === 'paid' ? 'paid' : 'failed', 'reason' => $outcome, 'message' => MockCheckout::MESSAGES[$outcome] ?? '', 'last4' => $last4, 'result' => (string) ($ack['result'] ?? '')]];
+    }
+
+    /** @return array{reservation_id:string,amount_minor:int|string,currency:string} */
+    private function mockPending(Request $r, string $sessionId): array
     {
         $user = ServiceAuth::authenticate($r)['user'];
         if (!$this->provider->isMock()) {
             throw new ApiException(404, 'NOT_FOUND');
         }
         Rbac::require($user['role'], 'checkout.start');
-        $id = (string) ($r->json()['sessionId'] ?? '');
         $st = $this->pdo->prepare("SELECT reservation_id, amount_minor, currency FROM checkout_session WHERE session_id = ? AND status = 'PENDING'");
-        $st->execute([$id]);
-        $s = $st->fetch() ?: throw new ApiException(404, 'NOT_FOUND', 'No pending checkout session');
-        $body = json_encode(PayMongoAdapter::mockPaidEvent($id, $s['reservation_id'], (int) $s['amount_minor'], $s['currency']));
-        return $this->handleWebhook($body, PayMongoAdapter::signatureHeader($body, $this->provider->webhookSecret(), time()));
+        $st->execute([$sessionId]);
+        return $st->fetch() ?: throw new ApiException(404, 'NOT_FOUND', 'No pending checkout session');
     }
 
     public function folio(Request $r, array $p): array

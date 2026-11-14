@@ -29,7 +29,8 @@ $router->add('GET', '/healthz', function () use ($c) {
 });
 $router->add('POST', '/internal/reservations/{id}/checkout', fn ($r, $p) => $c()->checkout($r, $p));
 $router->add('POST', '/internal/webhooks/paymongo', fn ($r) => $c()->webhook($r));
-$router->add('POST', '/internal/mock/paymongo/pay', fn ($r) => $c()->mockPay($r));
+$router->add('GET', '/internal/mock/paymongo/sessions/{id}', fn ($r, $p) => $c()->mockSession($r, $p));
+$router->add('POST', '/internal/mock/paymongo/sessions/{id}/attempts', fn ($r, $p) => $c()->mockAttempt($r, $p));
 $router->add('GET', '/internal/folios/{id}', fn ($r, $p) => $c()->folio($r, $p));
 $router->add('POST', '/internal/folios/{id}/charges', fn ($r, $p) => $c()->charge($r, $p));
 $router->add('POST', '/internal/folios/{id}/settle', fn ($r, $p) => $c()->settle($r, $p));
