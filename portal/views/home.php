@@ -14,10 +14,10 @@ $chapters = [
     ['room-bed-detail.webp', 1400, 1050, 'Settle into your room', 'Air conditioning, a rain shower, free Wi-Fi and a safe big enough for a laptop, in every room. The front desk is open all night if you need anything.'],
     ['breakfast-table.webp', 1200, 900, 'Breakfast, then check out by noon', 'Deluxe rooms come with breakfast for two and Suites with breakfast for four. Check-out is by 12:00 noon, and your receipt waits in your account.'],
 ];
-$story = 'MA Hotel is forty-five rooms in Metro Manila, looked after by one team. Every room has a rain shower, free Wi-Fi and a safe that fits a laptop, and someone is at the front desk all night to let you in.';
+$story = 'A quiet place to land in Metro Manila. Clean rooms, a hot rain shower, Wi-Fi that works, and a friendly face at the front desk no matter how late your flight gets in.';
 ?>
 <!-- 1. Hero: rounded photo frame, header on top, brand word behind the skyline, booking card in frosted glass -->
-<section class="hero relative isolate mx-2 mt-2 overflow-hidden rounded-[2rem] bg-ink-950 text-white sm:mx-3 sm:mt-3" aria-labelledby="hero-h">
+<section class="hero relative isolate overflow-hidden bg-ink-950 text-white" aria-labelledby="hero-h">
   <img src="/assets/img/hero-metro-manila-night.webp" alt="" class="hero-photo absolute inset-0 -z-30 size-full object-cover object-[50%_60%]" width="1920" height="1440" fetchpriority="high">
   <div class="absolute inset-0 -z-10 bg-gradient-to-t from-ink-950 via-ink-950/60 to-ink-950/30"></div>
   <div class="absolute inset-0 -z-10 bg-gradient-to-r from-ink-950/75 via-ink-950/25 to-transparent"></div>
@@ -25,12 +25,12 @@ $story = 'MA Hotel is forty-five rooms in Metro Manila, looked after by one team
 
   <div class="container-page grid min-h-[44rem] items-end gap-10 pb-10 pt-36 sm:min-h-[46rem] sm:pb-14 lg:min-h-[48rem] lg:grid-cols-12 lg:gap-8">
     <div class="lg:col-span-7">
-      <p class="rise [--i:0] eyebrow text-white/85 before:bg-clay-400">45 rooms &middot; Front desk open all night</p>
+      <p class="rise [--i:0] eyebrow text-white/85 before:bg-clay-400">Boutique hotel &middot; Front desk open all night</p>
       <h1 id="hero-h" class="mt-5 font-display text-5xl font-medium leading-[0.98] tracking-tight text-white sm:text-6xl lg:text-7xl xl:text-8xl">
         <span class="rise [--i:1] block">A boutique hotel</span>
         <span class="rise [--i:2] block text-white/70">in Metro Manila</span>
       </h1>
-      <p class="rise [--i:3] text-pretty mt-6 max-w-lg text-base text-white/90 sm:text-lg">Twenty Standard rooms, fifteen Deluxe rooms and ten Suites, each with a rain shower and free Wi-Fi. Land late and someone is still at the desk to hand you your key.</p>
+      <p class="rise [--i:3] text-pretty mt-6 max-w-lg text-base text-white/90 sm:text-lg">Every room has a rain shower and free Wi-Fi. Land late and someone is still at the desk to hand you your key.</p>
       <ul class="rise [--i:4] mt-6 flex flex-wrap gap-2 text-sm" aria-label="Why book with us">
         <?php foreach (['Free cancellation up to 48 hours', 'Card, GCash or Maya', 'Breakfast with Deluxe and Suites'] as $p) { ?>
           <li class="glass-dark inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-white ring-1 ring-white/20"><?= icon('check', 'size-4 text-clay-300') ?> <?= e($p) ?></li>
@@ -44,8 +44,8 @@ $story = 'MA Hotel is forty-five rooms in Metro Manila, looked after by one team
       <div class="mt-5 grid grid-cols-2 gap-2">
         <div class="hero-well col-span-2 sm:col-span-1"><label class="label" for="h-in"><?= icon('calendar', 'size-4') ?> Check-in</label><input class="input" id="h-in" name="checkIn" type="date" required min="<?= e(today()) ?>" value="<?= e($form['checkIn']) ?>" data-checkin></div>
         <div class="hero-well col-span-2 sm:col-span-1"><label class="label" for="h-out"><?= icon('calendar', 'size-4') ?> Check-out</label><input class="input" id="h-out" name="checkOut" type="date" required min="<?= e(plus_days(today(), 1)) ?>" value="<?= e($form['checkOut']) ?>" data-checkout></div>
-        <div class="hero-well"><label class="label" for="h-adults"><?= icon('users', 'size-4') ?> Guests</label><select class="input" id="h-adults" name="adults"><?php for ($i = 1; $i <= 8; $i++) { echo '<option value="' . $i . '"' . ($i === 2 ? ' selected' : '') . '>' . $i . ($i === 1 ? ' guest' : ' guests') . '</option>'; } ?></select></div>
-        <div class="hero-well"><label class="label" for="h-rooms"><?= icon('bed', 'size-4') ?> Rooms</label><select class="input" id="h-rooms" name="rooms"><?php for ($i = 1; $i <= 5; $i++) { echo '<option value="' . $i . '"' . ($i === 1 ? ' selected' : '') . '>' . $i . ($i === 1 ? ' room' : ' rooms') . '</option>'; } ?></select></div>
+        <div class="hero-well"><label class="label" for="h-adults"><?= icon('users', 'size-4') ?> Guests</label><select class="input" id="h-adults" name="adults" data-stepper><?php for ($i = 1; $i <= 8; $i++) { echo '<option value="' . $i . '"' . ($i === 2 ? ' selected' : '') . '>' . $i . ($i === 1 ? ' guest' : ' guests') . '</option>'; } ?></select></div>
+        <div class="hero-well"><label class="label" for="h-rooms"><?= icon('bed', 'size-4') ?> Rooms</label><select class="input" id="h-rooms" name="rooms" data-stepper><?php for ($i = 1; $i <= 5; $i++) { echo '<option value="' . $i . '"' . ($i === 1 ? ' selected' : '') . '>' . $i . ($i === 1 ? ' room' : ' rooms') . '</option>'; } ?></select></div>
       </div>
       <dl class="mt-2 grid grid-cols-2 divide-x divide-white/15 rounded-2xl bg-ink-950/45 px-4 py-3 text-sm">
         <div><dt class="text-white/75">Check-in</dt><dd class="font-medium text-white">After 2:00 PM</dd></div>
@@ -62,13 +62,13 @@ $story = 'MA Hotel is forty-five rooms in Metro Manila, looked after by one team
   <div class="grid gap-8 lg:grid-cols-12 lg:gap-16">
     <div class="lg:col-span-4">
       <h2 id="about-h" class="eyebrow">Our story</h2>
-      <p class="text-pretty mt-6 max-w-xs text-base text-ink-700">Twenty Standard rooms, fifteen Deluxe rooms and ten Suites, all on one booking site with live prices.</p>
+      <p class="text-pretty mt-6 max-w-xs text-base text-ink-700">Pick your dates, see the real price, and book in a few minutes. No calls, no surprises at check-in.</p>
       <a href="/rooms" class="btn btn-secondary btn-arrow mt-6">See the rooms <span class="btn-chip"><?= icon('arrow', 'size-4') ?></span></a>
     </div>
     <p class="text-balance font-display text-3xl font-medium leading-tight tracking-tight text-ink-950 sm:text-4xl lg:col-span-8 lg:text-5xl" data-words><?= e($story) ?></p>
   </div>
   <dl class="mt-16 grid grid-cols-2 gap-y-8 border-t border-ink-200 pt-8 sm:mt-20 lg:grid-cols-4">
-    <?php foreach ([['45', 'rooms, one team'], ['3', 'room types, up to 4 guests'], ['24 h', 'front desk, every day'], ['48 h', 'free cancellation before arrival']] as [$v, $l]) { ?>
+    <?php foreach ([['10 min', 'to pay while we hold your room'], ['3', 'ways to pay: card, GCash, Maya'], ['24 h', 'front desk, every day'], ['48 h', 'free cancellation before arrival']] as [$v, $l]) { ?>
       <div class="pr-4"><dt class="sr-only"><?= e($l) ?></dt><dd class="stat-value"><?= e($v) ?></dd><dd class="stat-label"><?= e($l) ?></dd></div>
     <?php } ?>
   </dl>
@@ -146,20 +146,20 @@ $story = 'MA Hotel is forty-five rooms in Metro Manila, looked after by one team
   </div>
 </section>
 
-<!-- 6. FAQ with a photo beside it, cropped to the height of the questions -->
+<!-- 6. FAQ. Photo on top as a banner on phones and tablets; pinned beside the questions on desktop. Its size never depends on how many answers are open. -->
 <section class="container-page mt-24 sm:mt-32" aria-labelledby="faq-h">
   <p class="eyebrow">Questions</p>
-  <h2 id="faq-h" class="section-title mt-3">Questions guests ask before they book.</h2>
-  <div class="mt-10 grid gap-6 lg:grid-cols-12">
-    <div class="space-y-3 lg:col-span-7">
+  <h2 id="faq-h" class="section-title mt-3 max-w-2xl">Questions guests ask before they book.</h2>
+  <div class="mt-8 grid gap-6 sm:mt-10 lg:grid-cols-12 lg:gap-10">
+    <figure class="photo aspect-[16/9] w-full sm:aspect-[2/1] lg:sticky lg:top-24 lg:col-span-5 lg:aspect-[4/5] lg:self-start lg:order-2"><img src="/assets/img/room-suite.webp" alt="" class="size-full object-cover" width="1200" height="800" loading="lazy" sizes="(min-width: 1024px) 40vw, 100vw"></figure>
+    <div class="min-w-0 space-y-3 lg:order-1 lg:col-span-7">
       <?php foreach ($faq as $k => [$q, $a]) { ?>
-        <details class="group/faq card px-5 py-1 sm:px-6"<?= $k === 0 ? ' open' : '' ?>>
-          <summary class="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 text-left font-semibold text-ink-950 [&::-webkit-details-marker]:hidden"><?= e($q) ?><span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-ink-100 text-ink-800 transition-transform duration-200 group-open/faq:rotate-45" aria-hidden="true"><?= icon('x', 'size-4 rotate-45') ?></span></summary>
-          <p class="text-pretty max-w-prose pb-5 text-ink-600"><?= e($a) ?></p>
+        <details class="group/faq card px-4 py-1 sm:px-6"<?= $k === 0 ? ' open' : '' ?>>
+          <summary class="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 py-2 text-left text-base font-semibold text-ink-950 sm:gap-4 sm:text-lg [&::-webkit-details-marker]:hidden"><span class="min-w-0 text-pretty"><?= e($q) ?></span><span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-ink-100 text-ink-800 transition-transform duration-200 group-open/faq:rotate-45" aria-hidden="true"><?= icon('x', 'size-4 rotate-45') ?></span></summary>
+          <p class="text-pretty max-w-prose pb-5 text-sm text-ink-600 sm:text-base"><?= e($a) ?></p>
         </details>
       <?php } ?>
     </div>
-    <figure class="photo relative hidden lg:col-span-5 lg:block"><img src="/assets/img/room-suite.webp" alt="" class="absolute inset-0 size-full object-cover" width="1200" height="800" loading="lazy"></figure>
   </div>
 </section>
 

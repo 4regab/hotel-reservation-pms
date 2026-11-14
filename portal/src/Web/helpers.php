@@ -150,7 +150,7 @@ function price_rows(int $totalMinor, int $nights, int $rooms = 1): string
 {
     $p = price_parts($totalMinor, $nights, $rooms);
     $what = $nights . ($nights === 1 ? ' night' : ' nights') . ($rooms > 1 ? ' x ' . $rooms . ' rooms' : '');
-    $row = fn (string $k, string $v, string $cls = '') => '<div class="flex justify-between gap-3 ' . $cls . '"><dt class="text-ink-600">' . $k . '</dt><dd class="tabular-nums text-ink-950">' . $v . '</dd></div>';
+    $row = fn (string $k, string $v, string $cls = '') => '<div class="flex justify-between gap-3 ' . $cls . '"><dt class="min-w-0 text-ink-600">' . $k . '</dt><dd class="shrink-0 whitespace-nowrap tabular-nums text-ink-950">' . $v . '</dd></div>';
     return ($p['rate'] !== null ? $row(e(php_money($p['rate'])) . ' x ' . e($what), e(php_money($totalMinor))) : $row('Room, ' . e($what), e(php_money($totalMinor))))
         . $row('Price before VAT', e(php_money($p['net'])), 'text-sm')
         . $row('VAT (12%)', e(php_money($p['vat'])), 'text-sm')

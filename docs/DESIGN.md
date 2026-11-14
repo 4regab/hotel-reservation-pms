@@ -11,7 +11,7 @@ No images, logos, illustrations or text from them are used. They share one visua
 
 | Area | What the references do | What MA Hotel does |
 | --- | --- | --- |
-| Layout | Wide pages (about 1200 px of content), a 12-column grid, big hero at the top. The hero photo sits inside a large rounded frame with a margin around it, not edge to edge. | `container-page` max width 80rem (1280 px) with 16 / 24 / 32 px side padding. The landing hero is an inset rounded frame (`rounded-[2rem]`) with the nav on top of the photo. |
+| Layout | Wide pages (about 1200 px of content), a 12-column grid, big hero at the top. The hero photo runs edge to edge with the nav on top of it. | `container-page` max width 80rem (1280 px) with 16 / 24 / 32 px side padding. The landing hero is full width with the nav on top of the photo. |
 | Spacing | Generous and regular: sections 96 to 128 px apart, cards 16 to 24 px apart. | An 8 px rhythm. Sections `mt-24 sm:mt-32`, card gaps `gap-4 sm:gap-6`, card padding `p-5 sm:p-6`. |
 | Type | One neo-grotesk family. Very large, light to medium headlines (64 to 96 px) with tight tracking and leading near 1. Body 14 to 16 px, muted gray. Few bold weights. | Display: **Inter Tight** (500, tight tracking). Body and UI: **Inter** (400 to 600). Both self-hosted under the SIL Open Font License. |
 | Colour | Near-black ink, off-white canvas, white cards, muted grays, and one warm or bright accent used only for the main action. | Navy ink, warm-white canvas `#f6f5f1`, white surfaces, one accent **tangerine** (token name `clay`) for main actions, and a soft **dusk** blue for information and charts. |

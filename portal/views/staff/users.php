@@ -17,7 +17,7 @@ $roles = ['reception' => 'Reception', 'housekeeping' => 'Housekeeping', 'mainten
   </details>
 
   <form method="get" action="/staff/admin/users" class="mt-6 flex flex-wrap items-end gap-3" role="search">
-    <div><label class="label" for="f-role">Role</label><select class="input" id="f-role" name="role"><option value="">All roles</option><option value="guest"<?= $role === 'guest' ? ' selected' : '' ?>>Guests</option><?php foreach ($roles as $k => $l) { ?><option value="<?= e($k) ?>"<?= $role === $k ? ' selected' : '' ?>><?= e($l) ?></option><?php } ?></select></div>
+    <div><label class="label" for="flt-role">Role</label><select class="input" id="flt-role" name="role"><option value="">All roles</option><option value="guest"<?= $role === 'guest' ? ' selected' : '' ?>>Guests</option><?php foreach ($roles as $k => $l) { ?><option value="<?= e($k) ?>"<?= $role === $k ? ' selected' : '' ?>><?= e($l) ?></option><?php } ?></select></div>
     <div class="w-full sm:w-auto sm:min-w-64 sm:flex-1 sm:max-w-xs"><label class="label" for="f-q">Name or email</label><input class="input" id="f-q" name="q" value="<?= e($q) ?>"></div>
     <button class="btn btn-secondary">Filter</button>
   </form>

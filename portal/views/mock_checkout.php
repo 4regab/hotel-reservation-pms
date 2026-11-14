@@ -7,9 +7,7 @@ $outcomeLabel = ['paid' => 'Payment succeeds', '3ds' => 'Asks you to authenticat
 $wallet = ['gcash' => 'GCash', 'paymaya' => 'Maya'];
 ?>
 <div class="mx-auto w-full max-w-5xl px-4 pb-4 pt-6 sm:px-6 sm:pt-8">
-  <p class="flex items-center gap-2 rounded-2xl border-2 border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950" role="note"><?= icon('alert', 'size-5 shrink-0') ?> TEST MODE: no real money is charged. This page stands in for PayMongo test mode and only accepts test cards.</p>
-
-  <div class="mt-6 grid gap-6 lg:grid-cols-12">
+  <div class="grid gap-6 lg:grid-cols-12">
     <aside class="lg:order-2 lg:col-span-5" aria-labelledby="co-sum">
       <div class="card card-pad lg:sticky lg:top-6">
         <p class="text-sm text-ink-600">Paying MA Hotel</p>
@@ -26,6 +24,7 @@ $wallet = ['gcash' => 'GCash', 'paymaya' => 'Maya'];
     <section class="lg:order-1 lg:col-span-7" aria-labelledby="co-h">
       <div class="card card-pad">
         <h1 id="co-h" class="font-display text-3xl font-medium tracking-tight"><?= $step === '3ds' ? 'Authenticate payment' : 'Choose how to pay' ?></h1>
+        <p class="mt-1 text-sm text-ink-600">Test mode: no real money is charged. Only test cards work.</p>
 
         <?php if ($step === '3ds') { ?>
           <p class="mt-2 text-ink-700">Your bank asks you to confirm this payment of <strong><?= e(php_money((int) $s['amountMinor'])) ?></strong> with your <?= e($keep['brand']) ?> card ending in <strong><?= e($keep['last4']) ?></strong>.</p>

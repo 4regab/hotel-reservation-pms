@@ -88,7 +88,7 @@ $profile = $staff ? '/staff/account' : '/account/profile';
   </aside>
   <div class="flex min-w-0 flex-1 flex-col xl:pl-64">
 <?php } else { ?>
-<header class="no-print <?= $onPhoto ? 'on-photo absolute inset-x-2 top-2 z-30 text-white sm:inset-x-3 sm:top-3' : 'relative z-30' ?>">
+<header class="no-print <?= $onPhoto ? 'on-photo absolute inset-x-0 top-0 z-30 text-white' : 'relative z-30' ?>">
   <div class="container-page flex items-center justify-between gap-3 py-4 <?= $onPhoto ? 'sm:py-5' : '' ?>">
     <a href="/" class="flex min-h-11 shrink-0 items-center rounded-lg">
       <img src="/assets/brand/<?= $onPhoto ? 'ma-hotel-logo-dark.svg' : 'ma-hotel-logo-light.svg' ?>" alt="MA Hotel" class="h-9 w-auto" width="140" height="36">

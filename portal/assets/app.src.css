@@ -329,3 +329,61 @@
 @media print {
   .chapters.is-live { height: auto; }
 }
+
+/* Pickers (app.js). The real input or select stays underneath and keeps the value; these are what people see and touch.
+   One white card look everywhere, a bottom sheet on phones. */
+@layer components {
+  .dp-trigger, .sel-trigger { @apply flex cursor-pointer items-center justify-between gap-2 text-left; }
+  .pop-backdrop { @apply fixed inset-0 z-40 bg-ink-950/50; }
+  .pop { @apply z-50 rounded-3xl border border-ink-200/70 bg-white text-ink-950 shadow-float; position: absolute; left: var(--px, 0); top: var(--py, 0); }
+  .pop-grip { @apply mx-auto mb-3 h-1 w-10 rounded-full bg-ink-200; }
+
+  .dp { @apply p-4 sm:p-5; }
+  .dp-body { @apply relative; }
+  .dp-months { @apply flex justify-center gap-8; }
+  .dp-month { @apply w-full; }
+  .dp-month:nth-child(2) { @apply hidden; }
+  .dp-title { @apply flex h-10 items-center justify-center text-sm font-semibold text-ink-950; }
+  .dp-nav { @apply absolute top-0 z-10 flex size-10 items-center justify-center rounded-full text-ink-800 hover:bg-ink-100 disabled:cursor-not-allowed disabled:text-ink-300 disabled:hover:bg-transparent; }
+  .dp-prev { left: 0; }
+  .dp-next { right: 0; }
+  .dp-grid { @apply grid grid-cols-7; }
+  .dp-dow { @apply flex h-8 items-center justify-center text-xs font-medium text-ink-500; }
+  .dp-day { @apply relative flex h-11 w-11 items-center justify-center justify-self-center rounded-full text-sm font-medium tabular-nums text-ink-900 hover:bg-ink-100 disabled:cursor-not-allowed disabled:text-ink-300 disabled:hover:bg-transparent; }
+  .dp-day.is-today::after { content: ""; @apply absolute bottom-1.5 size-1 rounded-full bg-clay-500; }
+  .dp-day.is-range, .dp-day.is-preview { @apply w-full rounded-none bg-clay-100 hover:bg-clay-200; }
+  .dp-day.is-start, .dp-day.is-end { @apply bg-ink-950 text-white hover:bg-ink-950; }
+  .dp-foot { @apply mt-3 flex items-center justify-between gap-3 border-t border-ink-100 pt-3; }
+  .dp-hint { @apply text-sm text-ink-600; }
+
+  .sel { @apply max-h-72 overflow-y-auto p-1.5; min-width: var(--pw, 10rem); max-width: min(32rem, calc(100vw - 1rem)); }
+  .sel-opt { @apply flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl px-3 text-sm text-ink-900 outline-none hover:bg-ink-100 focus:bg-ink-100; }
+  .sel-opt[aria-selected="true"] { @apply font-semibold; }
+  .sel-opt .tick { @apply invisible shrink-0 text-clay-700; }
+  .sel-opt[aria-selected="true"] .tick { @apply visible; }
+
+  .stepper { @apply flex min-h-11 items-center justify-between gap-1; }
+  .step-btn { @apply flex size-10 shrink-0 items-center justify-center rounded-full bg-ink-100 text-ink-900 transition-colors hover:bg-ink-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-ink-100; }
+  .step-val { @apply min-w-0 flex-1 text-center text-base font-medium tabular-nums; }
+  .hero-well .step-btn { @apply bg-white/15 text-white hover:bg-white/25 disabled:hover:bg-white/15; }
+  .hero-well .step-btn:focus-visible { @apply outline-white; }
+}
+@media (min-width: 640px) {
+  .pop-backdrop { background: transparent; }
+  .dp { width: 22rem; }
+  .dp-month { width: 19.25rem; }
+}
+@media (min-width: 768px) {
+  .dp { width: 43.5rem; }
+  .dp-month:nth-child(2) { display: block; }
+}
+@media (max-width: 639.98px) {
+  .pop { position: fixed; inset: auto 0 0 0; border-radius: 1.5rem 1.5rem 0 0; border-bottom: 0; max-height: 88svh; overflow-y: auto; padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+  .sel { max-width: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pop:not([hidden]) { animation: pop-in 160ms var(--ease-out-strong) both; }
+  @media (max-width: 639.98px) { .pop:not([hidden]) { animation: sheet-in 260ms var(--ease-out-strong) both; } }
+}
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+@keyframes sheet-in { from { transform: translateY(100%); } }
