@@ -16,12 +16,12 @@ final class BookingRepository
 
     public function roomTypes(): array
     {
-        return $this->pdo->query('SELECT room_type_id, name, capacity, nightly_rate_minor, currency FROM room_type ORDER BY nightly_rate_minor')->fetchAll();
+        return $this->pdo->query('SELECT * FROM room_type ORDER BY nightly_rate_minor')->fetchAll();
     }
 
     public function roomType(string $id): ?array
     {
-        $st = $this->pdo->prepare('SELECT room_type_id, name, capacity, nightly_rate_minor, currency FROM room_type WHERE room_type_id = ?');
+        $st = $this->pdo->prepare('SELECT * FROM room_type WHERE room_type_id = ?');
         $st->execute([$id]);
         return $st->fetch() ?: null;
     }
@@ -66,9 +66,27 @@ final class BookingRepository
     public function insert(array $r): void
     {
         $this->pdo->prepare(
-            "INSERT INTO reservation (reservation_id, guest_id, room_type_id, check_in, check_out, quantity, status, guarantee, quote_minor, nightly_minor, currency, free_cancel_hours, hold_expires_at, version, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, 'HELD', 'NONE', ?, ?, ?, ?, ?, 1, UTC_TIMESTAMP(), UTC_TIMESTAMP())"
-        )->execute([$r['id'], $r['guestId'], $r['roomTypeId'], $r['checkIn'], $r['checkOut'], $r['quantity'], $r['quoteMinor'], $r['nightlyMinor'], $r['currency'], $r['freeCancelHours'], $r['holdExpiresAt']]);
+            "INSERT INTO reservation (reservation_id, code, guest_id, room_type_id, check_in, check_out, quantity, status, guarantee, quote_minor, nightly_minor, currency, free_cancel_hours, hold_expires_at, source, adults, special_requests, version, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'HELD', 'NONE', ?, ?, ?, ?, ?, ?, ?, ?, 1, UTC_TIMESTAMP(), UTC_TIMESTAMP())"
+        )->execute([$r['id'], self::newCode(), $r['guestId'], $r['roomTypeId'], $r['checkIn'], $r['checkOut'], $r['quantity'], $r['quoteMinor'], $r['nightlyMinor'], $r['currency'], $r['freeCancelHours'], $r['holdExpiresAt'],
+            $r['source'] ?? 'DIRECT', $r['adults'] ?? 1, $r['specialRequests'] ?? null]);
+    }
+
+    /** Short confirmation code like HL7K3Q9X. No look-alike characters (0/O, 1/I). The column is unique. */
+    public static function newCode(): string
+    {
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        $c = 'HL';
+        for ($i = 0; $i < 6; $i++) {
+            $c .= $alphabet[random_int(0, 31)];
+        }
+        return $c;
+    }
+
+    /** Record when payment arrived (event time) and when the booking became CONFIRMED. */
+    public function markConfirmed(string $id, ?string $paidAtSql): void
+    {
+        $this->pdo->prepare('UPDATE reservation SET confirmed_at = UTC_TIMESTAMP(), paid_at = COALESCE(?, paid_at), guarantee_requested = 0 WHERE reservation_id = ?')->execute([$paidAtSql, $id]);
     }
 
     /** Returns the new version (caller holds the row lock). */
