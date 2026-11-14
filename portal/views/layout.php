@@ -30,10 +30,14 @@ $navLink = function (array $l, string $extra = '') use ($path): string {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
 <title><?= e($title !== '' ? $title . ' | HarborLight Hotels' : 'HarborLight Hotels & Resorts, Metro Manila') ?></title>
 <meta name="description" content="<?= e($description !== '' ? $description : 'A 45-room boutique hotel in Metro Manila. Book direct for the best rate, free cancellation up to 48 hours before arrival.') ?>">
 <meta name="theme-color" content="#0c4a6e">
+<meta property="og:title" content="HarborLight Hotels &amp; Resorts">
+<meta property="og:description" content="A 45-room boutique hotel in Metro Manila. Book direct, cancel free until 48 hours before arrival.">
+<meta property="og:type" content="website">
 <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/app.css">
 <script src="/assets/app.js" defer></script>

@@ -25,6 +25,8 @@ for (const [w, h, name] of widths) {
   }
   for (const p of args) {
     const res = await page.goto(base + p, { waitUntil: 'networkidle' });
+    // scroll through the page once so scroll-triggered sections have appeared before the full-page capture
+    await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 400) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 60)); } window.scrollTo(0, 0); await new Promise((r) => setTimeout(r, 300)); });
     const file = `${out}/${p.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '') || 'home'}-${name}.png`;
     await page.screenshot({ path: file, fullPage: true });
     // horizontal overflow check: a page should never scroll sideways

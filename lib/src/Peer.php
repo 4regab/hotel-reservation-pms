@@ -24,6 +24,9 @@ final class Peer
     public static function ok(string $caller, string $service, string $method, string $path, ?array $user = null, ?array $body = null, ?string $idempotencyKey = null): array
     {
         [$status, $data] = self::call($caller, $service, $method, $path, $user, $body, $idempotencyKey);
+        if ($status === 401) {   // our own service credentials were refused: a deployment problem, never the visitor's sign-in
+            throw new ApiException(502, 'UPSTREAM_AUTH_FAILED', "{$service} refused this service's credentials");
+        }
         if ($status >= 400) {
             $e = $data['error'] ?? [];
             throw new ApiException($status, (string) ($e['code'] ?? 'UPSTREAM_ERROR'), (string) ($e['message'] ?? ''));
