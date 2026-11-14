@@ -19,7 +19,8 @@ case "${1:-start}" in
     stop
     export PHP_CLI_SERVER_WORKERS=8
     $PHP_BIN scripts/migrate.php
-    $PHP_BIN portal/bin/seed.php
+    $PHP_BIN portal/bin/ensure-admin.php
+    $PHP_BIN scripts/seed-demo.php
     for pair in portal:8100 booking:8101 roomops:8102 billing:8103; do
       svc=${pair%%:*}; port=${pair##*:}
       SERVICE_NAME=$svc nohup $PHP_BIN -S 127.0.0.1:"$port" -t "$svc/public" "$svc/public/index.php" > "$RUN/$svc.log" 2>&1 &

@@ -1,4 +1,5 @@
 .git
 .env
-tests
-docs
+node_modules
+backups
+*.log
