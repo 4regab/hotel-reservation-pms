@@ -9,5 +9,5 @@ $pdo = Lib\Db::connect('PORTAL');
 $result = (new Portal\Notifications($pdo, new Portal\Mailer($pdo)))->run();
 $pdo->prepare('DELETE FROM rate_limit WHERE window_start < ?')->execute([time() - 3600]);
 $pdo->prepare('DELETE FROM session WHERE updated_at < ?')->execute([time() - 7 * 86400]);
-$pdo->prepare('DELETE FROM password_reset WHERE expires_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY)')->execute();
+$pdo->prepare('DELETE FROM password_reset WHERE expires_at < DATEADD(DAY, -1, DATETRUNC(SECOND, SYSUTCDATETIME()))')->execute();
 echo json_encode($result), "\n";

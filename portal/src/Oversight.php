@@ -71,8 +71,8 @@ final class Oversight
             }
         }
         $jobs = $this->pdo->query("SELECT status, COUNT(*) AS n FROM notification_job GROUP BY status")->fetchAll(\PDO::FETCH_KEY_PAIR);
-        $failed = $this->pdo->query("SELECT job_id, type, attempts, last_error, created_at FROM notification_job WHERE status IN ('FAILED') OR (status = 'PENDING' AND attempts > 0) ORDER BY created_at DESC LIMIT 20")->fetchAll();
-        $mail = $this->pdo->query("SELECT status, COUNT(*) AS n FROM email_log WHERE created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 7 DAY) GROUP BY status")->fetchAll(\PDO::FETCH_KEY_PAIR);
+        $failed = $this->pdo->query("SELECT TOP (20) job_id, type, attempts, last_error, created_at FROM notification_job WHERE status IN ('FAILED') OR (status = 'PENDING' AND attempts > 0) ORDER BY created_at DESC")->fetchAll();
+        $mail = $this->pdo->query("SELECT status, COUNT(*) AS n FROM email_log WHERE created_at > DATEADD(DAY, -7, DATETRUNC(SECOND, SYSUTCDATETIME())) GROUP BY status")->fetchAll(\PDO::FETCH_KEY_PAIR);
         $oldest = $this->pdo->query("SELECT MIN(created_at) FROM notification_job WHERE status = 'PENDING'")->fetchColumn();
         return [
             'services' => $services, 'outbox' => $outbox,
@@ -84,6 +84,6 @@ final class Oversight
     /** Recent emails for the IT page (subject and status only, never the body). */
     public function recentEmails(int $limit = 25): array
     {
-        return $this->pdo->query('SELECT email_id, template, to_email, subject, status, created_at FROM email_log ORDER BY created_at DESC LIMIT ' . max(1, min(100, $limit)))->fetchAll();
+        return $this->pdo->query('SELECT TOP (' . max(1, min(100, $limit)) . ') email_id, template, to_email, subject, status, created_at FROM email_log ORDER BY created_at DESC')->fetchAll();
     }
 }

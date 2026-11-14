@@ -137,7 +137,13 @@ $router->add('POST', '/v1/password-reset/confirm', function (Request $r) use ($d
 $router->add('GET', '/v1/reports/summary', function () use ($auth, $db) {
     $u = $auth()->user() ?? throw new ApiException(401, 'UNAUTHENTICATED', 'Sign in first');
     Rbac::require($u['role'], 'reports.read');
-    $rows = $db()->query('SELECT day, confirmed, cancelled, revenue_minor AS revenueMinor, refunded_minor AS refundedMinor, check_ins AS checkIns, check_outs AS checkOuts, updated_at AS updatedAt FROM report_daily ORDER BY day DESC LIMIT 30')->fetchAll();
+    $rows = $db()->query('SELECT day, confirmed, cancelled, revenue_minor AS revenueMinor, refunded_minor AS refundedMinor, check_ins AS checkIns, check_outs AS checkOuts, updated_at AS updatedAt FROM report_daily ORDER BY day DESC OFFSET 0 ROWS FETCH NEXT 30 ROWS ONLY')->fetchAll();
+    // BIGINT columns come back as strings: the API sends numbers.
+    foreach ($rows as &$row) {
+        $row['revenueMinor'] = (int) $row['revenueMinor'];
+        $row['refundedMinor'] = (int) $row['refundedMinor'];
+    }
+    unset($row);
     return [200, ['currency' => 'PHP', 'note' => 'Reporting copy only; never used to sell rooms.', 'days' => $rows]];
 });
 

@@ -30,7 +30,9 @@ final class SessionStore implements \SessionHandlerInterface
 
     public function write(string $id, string $data): bool
     {
-        $this->pdo->prepare('INSERT INTO session (session_id, data, updated_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE data = VALUES(data), updated_at = VALUES(updated_at)')->execute([$id, $data, time()]);
+        $this->pdo->prepare('MERGE session WITH (HOLDLOCK) AS d USING (SELECT ? AS session_id, ? AS data, CAST(? AS INT) AS updated_at) AS s ON d.session_id = s.session_id
+                             WHEN MATCHED THEN UPDATE SET data = s.data, updated_at = s.updated_at
+                             WHEN NOT MATCHED THEN INSERT (session_id, data, updated_at) VALUES (s.session_id, s.data, s.updated_at);')->execute([$id, $data, time()]);
         return true;
     }
 

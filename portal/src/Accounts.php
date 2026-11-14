@@ -42,10 +42,10 @@ final class Accounts
         self::checkPassword((string) ($b['password'] ?? ''), $email);
         $id = Uuid::v4();
         try {
-            $this->pdo->prepare("INSERT INTO account (account_id, email, password_hash, role, full_name, phone, totp_secret, marketing_consent, created_at) VALUES (?, ?, ?, 'guest', ?, ?, NULL, ?, UTC_TIMESTAMP())")
+            $this->pdo->prepare("INSERT INTO account (account_id, email, password_hash, role, full_name, phone, totp_secret, marketing_consent, created_at) VALUES (?, ?, ?, 'guest', ?, ?, NULL, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))")
                 ->execute([$id, $email, password_hash((string) $b['password'], PASSWORD_DEFAULT), $name, $phone, !empty($b['marketingConsent']) ? 1 : 0]);
         } catch (\PDOException $e) {
-            if (($e->errorInfo[1] ?? 0) === 1062) {
+            if (\Lib\Db::isDuplicateKey($e)) {
                 throw new ApiException(409, 'EMAIL_TAKEN', 'An account with this email already exists. Sign in or reset your password.');
             }
             throw $e;
@@ -74,7 +74,7 @@ final class Accounts
     {
         $token = bin2hex(random_bytes(32));
         Tx::run($this->pdo, function () use ($accountId, $token): void {
-            $this->pdo->prepare('INSERT INTO password_reset (token_hash, account_id, expires_at, created_at) VALUES (?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? SECOND), UTC_TIMESTAMP())')
+            $this->pdo->prepare('INSERT INTO password_reset (token_hash, account_id, expires_at, created_at) VALUES (?, ?, DATEADD(SECOND, CAST(? AS INT), DATETRUNC(SECOND, SYSUTCDATETIME())), DATETRUNC(SECOND, SYSUTCDATETIME()))')
                 ->execute([hash('sha256', $token), $accountId, self::RESET_TTL]);
             Notifications::queue($this->pdo, 'EMAIL_PASSWORD_RESET', null, $accountId, ['token' => $token]);
         });
@@ -82,7 +82,7 @@ final class Accounts
 
     public function resetTokenValid(string $token): bool
     {
-        $st = $this->pdo->prepare('SELECT 1 FROM password_reset WHERE token_hash = ? AND used_at IS NULL AND expires_at > UTC_TIMESTAMP()');
+        $st = $this->pdo->prepare('SELECT 1 FROM password_reset WHERE token_hash = ? AND used_at IS NULL AND expires_at > DATETRUNC(SECOND, SYSUTCDATETIME())');
         $st->execute([hash('sha256', $token)]);
         return $st->fetchColumn() !== false;
     }
@@ -91,7 +91,7 @@ final class Accounts
     {
         $this->limit->hit('reset-confirm:' . $ip, 10, 3600);
         Tx::run($this->pdo, function () use ($token, $newPassword, $ip): void {
-            $st = $this->pdo->prepare('SELECT r.account_id, a.email FROM password_reset r JOIN account a ON a.account_id = r.account_id WHERE r.token_hash = ? AND r.used_at IS NULL AND r.expires_at > UTC_TIMESTAMP() AND a.active = 1 FOR UPDATE');
+            $st = $this->pdo->prepare('SELECT r.account_id, a.email FROM password_reset r WITH (UPDLOCK, ROWLOCK) JOIN account a WITH (UPDLOCK, ROWLOCK) ON a.account_id = r.account_id WHERE r.token_hash = ? AND r.used_at IS NULL AND r.expires_at > DATETRUNC(SECOND, SYSUTCDATETIME()) AND a.active = 1');
             $st->execute([hash('sha256', $token)]);
             $r = $st->fetch();
             if ($r === false) {
@@ -99,7 +99,7 @@ final class Accounts
             }
             self::checkPassword($newPassword, $r['email']);
             $this->pdo->prepare('UPDATE account SET password_hash = ?, failed_logins = 0, locked_until = NULL WHERE account_id = ?')->execute([password_hash($newPassword, PASSWORD_DEFAULT), $r['account_id']]);
-            $this->pdo->prepare('UPDATE password_reset SET used_at = UTC_TIMESTAMP() WHERE account_id = ? AND used_at IS NULL')->execute([$r['account_id']]);
+            $this->pdo->prepare('UPDATE password_reset SET used_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE account_id = ? AND used_at IS NULL')->execute([$r['account_id']]);
             $this->dropSessions($r['account_id']);
             Audit::record($this->pdo, ['accountId' => $r['account_id'], 'role' => 'guest'], 'account.password_reset', 'account', $r['account_id'], [], $ip);
         });
@@ -140,11 +140,12 @@ final class Accounts
             $args[] = $role;
         }
         if ($q !== '') {
-            $where[] = '(email LIKE ? OR full_name LIKE ?)';
-            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $q) . '%';
+            $where[] = "(email LIKE ? ESCAPE '\\' OR full_name LIKE ? ESCAPE '\\')";
+            $like = '%' . str_replace(['%', '_', '['], ['\\%', '\\_', '\\['], $q) . '%';
             array_push($args, $like, $like);
         }
-        $st = $this->pdo->prepare('SELECT account_id, email, full_name, role, active, last_login_at, locked_until, totp_secret IS NOT NULL AS has_totp, created_at FROM account WHERE ' . implode(' AND ', $where) . ' ORDER BY role = \'guest\', role, full_name LIMIT 200');
+        // Staff first in the order the role list was declared (MySQL sorted the ENUM that way), guests last, then by name.
+        $st = $this->pdo->prepare('SELECT TOP (200) account_id, email, full_name, role, active, last_login_at, locked_until, CASE WHEN totp_secret IS NOT NULL THEN 1 ELSE 0 END AS has_totp, created_at FROM account WHERE ' . implode(' AND ', $where) . " ORDER BY CASE role WHEN 'reception' THEN 1 WHEN 'housekeeping' THEN 2 WHEN 'maintenance' THEN 3 WHEN 'cashier' THEN 4 WHEN 'manager' THEN 5 WHEN 'it' THEN 6 WHEN 'steward' THEN 7 ELSE 8 END, full_name");
         $st->execute($args);
         return $st->fetchAll();
     }
@@ -162,10 +163,10 @@ final class Accounts
         $secret = self::randomBase32();
         $id = Uuid::v4();
         try {
-            $this->pdo->prepare('INSERT INTO account (account_id, email, password_hash, role, full_name, phone, totp_secret, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())')
+            $this->pdo->prepare('INSERT INTO account (account_id, email, password_hash, role, full_name, phone, totp_secret, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))')
                 ->execute([$id, $email, password_hash($temp, PASSWORD_DEFAULT), $role, $name, trim((string) ($b['phone'] ?? '')), $secret]);
         } catch (\PDOException $e) {
-            if (($e->errorInfo[1] ?? 0) === 1062) {
+            if (\Lib\Db::isDuplicateKey($e)) {
                 throw new ApiException(409, 'EMAIL_TAKEN', 'An account with this email already exists.');
             }
             throw $e;

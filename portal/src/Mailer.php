@@ -63,14 +63,14 @@ final class Mailer
 
     public function alreadyDone(string $jobId): bool
     {
-        $st = $this->pdo->prepare("SELECT 1 FROM email_log WHERE job_id = ? AND status IN ('SENT','LOGGED') LIMIT 1");
+        $st = $this->pdo->prepare("SELECT TOP (1) 1 FROM email_log WHERE job_id = ? AND status IN ('SENT','LOGGED')");
         $st->execute([$jobId]);
         return $st->fetchColumn() !== false;
     }
 
     private function record(string $template, string $to, string $subject, string $html, string $status, ?string $providerId, ?string $error, ?string $jobId): void
     {
-        $this->pdo->prepare('INSERT INTO email_log (email_id, template, to_email, subject, body_html, status, provider_id, error, job_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())')
+        $this->pdo->prepare('INSERT INTO email_log (email_id, template, to_email, subject, body_html, status, provider_id, error, job_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))')
             ->execute([Uuid::v4(), $template, $to, $subject, $html, $status, $providerId, $error, $jobId]);
     }
 }

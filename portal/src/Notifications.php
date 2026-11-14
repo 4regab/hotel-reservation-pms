@@ -22,7 +22,7 @@ final class Notifications
     public static function queue(\PDO $pdo, string $type, ?string $reservationId, ?string $accountId = null, ?array $payload = null): string
     {
         $id = Uuid::v4();
-        $pdo->prepare("INSERT INTO notification_job (job_id, type, reservation_id, account_id, payload, status, attempts, next_attempt_at, created_at) VALUES (?, ?, ?, ?, ?, 'PENDING', 0, UTC_TIMESTAMP(), UTC_TIMESTAMP())")
+        $pdo->prepare("INSERT INTO notification_job (job_id, type, reservation_id, account_id, payload, status, attempts, next_attempt_at, created_at) VALUES (?, ?, ?, ?, ?, 'PENDING', 0, DATETRUNC(SECOND, SYSUTCDATETIME()), DATETRUNC(SECOND, SYSUTCDATETIME()))")
             ->execute([$id, $type, $reservationId, $accountId, $payload === null ? null : json_encode($payload), ]);
         return $id;
     }
@@ -30,19 +30,19 @@ final class Notifications
     /** @return array{sent:int,failed:int} */
     public function run(int $limit = 50): array
     {
-        $jobs = $this->pdo->query("SELECT job_id, type, reservation_id, account_id, payload, attempts FROM notification_job WHERE status = 'PENDING' AND (next_attempt_at IS NULL OR next_attempt_at <= UTC_TIMESTAMP()) ORDER BY created_at LIMIT " . max(1, $limit))->fetchAll();
+        $jobs = $this->pdo->query("SELECT TOP (" . max(1, $limit) . ") job_id, type, reservation_id, account_id, payload, attempts FROM notification_job WHERE status = 'PENDING' AND (next_attempt_at IS NULL OR next_attempt_at <= DATETRUNC(SECOND, SYSUTCDATETIME())) ORDER BY created_at")->fetchAll();
         $out = ['sent' => 0, 'failed' => 0];
         foreach ($jobs as $job) {
             try {
                 if ($this->mailer->alreadyDone($job['job_id']) || $this->process($job)) {
-                    $this->pdo->prepare("UPDATE notification_job SET status = 'SENT', sent_at = UTC_TIMESTAMP(), attempts = attempts + 1, last_error = NULL, payload = NULL WHERE job_id = ?")->execute([$job['job_id']]);
+                    $this->pdo->prepare("UPDATE notification_job SET status = 'SENT', sent_at = DATETRUNC(SECOND, SYSUTCDATETIME()), attempts = attempts + 1, last_error = NULL, payload = NULL WHERE job_id = ?")->execute([$job['job_id']]);
                     $out['sent']++;
                 }
             } catch (ApiException $e) {
                 $attempts = (int) $job['attempts'] + 1;
                 $next = Retry::afterFailure($attempts);
                 $final = $next['status'] === 'REVIEW';
-                $this->pdo->prepare('UPDATE notification_job SET status = ?, attempts = ?, last_error = ?, next_attempt_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? SECOND) WHERE job_id = ?')
+                $this->pdo->prepare('UPDATE notification_job SET status = ?, attempts = ?, last_error = ?, next_attempt_at = DATEADD(SECOND, CAST(? AS INT), DATETRUNC(SECOND, SYSUTCDATETIME())) WHERE job_id = ?')
                     ->execute([$final ? 'FAILED' : 'PENDING', $attempts, mb_substr($e->getMessage(), 0, 200), $next['delay'], $job['job_id']]);
                 if ($final) {
                     $this->mailer->recordFailure($job['type'], '(see job)', $job['type'], $e->getMessage(), $job['job_id']);

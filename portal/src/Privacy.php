@@ -44,7 +44,7 @@ final class Privacy
             throw new ApiException(409, 'ALREADY_OPEN', 'You already have an open request of this kind.');
         }
         $id = Uuid::v4();
-        $this->pdo->prepare("INSERT INTO privacy_request (request_id, account_id, type, details, status, due_at, created_at) VALUES (?, ?, ?, ?, 'OPEN', DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 DAY), UTC_TIMESTAMP())")
+        $this->pdo->prepare("INSERT INTO privacy_request (request_id, account_id, type, details, status, due_at, created_at) VALUES (?, ?, ?, ?, 'OPEN', DATEADD(DAY, 30, DATETRUNC(SECOND, SYSUTCDATETIME())), DATETRUNC(SECOND, SYSUTCDATETIME()))")
             ->execute([$id, $accountId, $type, $details]);
         Audit::record($this->pdo, ['accountId' => $accountId, 'role' => 'guest'], 'privacy.requested', 'privacy_request', $id, ['type' => $type], $ip);
         return $id;
@@ -52,7 +52,7 @@ final class Privacy
 
     public function forAccount(string $accountId): array
     {
-        $st = $this->pdo->prepare('SELECT request_id, type, status, details, resolution_note, due_at, created_at, completed_at, result IS NOT NULL AS has_result FROM privacy_request WHERE account_id = ? ORDER BY created_at DESC');
+        $st = $this->pdo->prepare('SELECT request_id, type, status, details, resolution_note, due_at, created_at, completed_at, CASE WHEN result IS NOT NULL THEN 1 ELSE 0 END AS has_result FROM privacy_request WHERE account_id = ? ORDER BY created_at DESC');
         $st->execute([$accountId]);
         return $st->fetchAll();
     }
@@ -69,8 +69,8 @@ final class Privacy
     public function queue(string $status = ''): array
     {
         $where = in_array($status, ['OPEN', 'IN_REVIEW', 'COMPLETED', 'REJECTED'], true) ? 'WHERE p.status = ' . $this->pdo->quote($status) : "WHERE p.status IN ('OPEN','IN_REVIEW')";
-        return $this->pdo->query("SELECT p.request_id, p.type, p.status, p.details, p.resolution_note, p.due_at, p.created_at, p.completed_at, p.account_id, a.email, a.full_name, p.due_at < UTC_TIMESTAMP() AS overdue
-                                    FROM privacy_request p JOIN account a ON a.account_id = p.account_id {$where} ORDER BY p.due_at LIMIT 100")->fetchAll();
+        return $this->pdo->query("SELECT TOP (100) p.request_id, p.type, p.status, p.details, p.resolution_note, p.due_at, p.created_at, p.completed_at, p.account_id, a.email, a.full_name, CASE WHEN p.due_at < DATETRUNC(SECOND, SYSUTCDATETIME()) THEN 1 ELSE 0 END AS overdue
+                                    FROM privacy_request p JOIN account a ON a.account_id = p.account_id {$where} ORDER BY p.due_at")->fetchAll();
     }
 
     public function find(string $id): array
@@ -96,7 +96,7 @@ final class Privacy
         if ($note === '') {
             throw new ApiException(422, 'INVALID_REQUEST', 'Explain the decision to the guest.');
         }
-        $st = $this->pdo->prepare("UPDATE privacy_request SET status = 'REJECTED', handled_by = ?, resolution_note = ?, completed_at = UTC_TIMESTAMP() WHERE request_id = ? AND status IN ('OPEN','IN_REVIEW')");
+        $st = $this->pdo->prepare("UPDATE privacy_request SET status = 'REJECTED', handled_by = ?, resolution_note = ?, completed_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE request_id = ? AND status IN ('OPEN','IN_REVIEW')");
         $st->execute([$actor['accountId'], $note, $id]);
         if ($st->rowCount() === 0) {
             throw new ApiException(409, 'ILLEGAL_TRANSITION', 'This request is already closed.');
@@ -131,13 +131,13 @@ final class Privacy
             Peer::ok('portal', 'booking', 'POST', '/internal/privacy/anonymize', $actor, ['accountId' => $acc]);   // 409 while a booking is still live
             Tx::run($this->pdo, function () use ($acc, $req): void {
                 $this->pdo->prepare('UPDATE email_log SET to_email = ?, body_html = ? WHERE to_email = ?')->execute(['deleted@deleted.invalid', '[removed on request]', $req['email']]);
-                $this->pdo->prepare("UPDATE account SET email = ?, full_name = 'Deleted guest', phone = '', password_hash = ?, active = 0, anonymized_at = UTC_TIMESTAMP(), marketing_consent = 0 WHERE account_id = ?")
+                $this->pdo->prepare("UPDATE account SET email = ?, full_name = 'Deleted guest', phone = '', password_hash = ?, active = 0, anonymized_at = DATETRUNC(SECOND, SYSUTCDATETIME()), marketing_consent = 0 WHERE account_id = ?")
                     ->execute(['deleted-' . substr($acc, 0, 8) . '@deleted.invalid', password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT), $acc]);
                 $this->pdo->prepare("UPDATE privacy_request SET details = '[removed]' WHERE account_id = ? AND type = 'CORRECTION'")->execute([$acc]);
             });
             $this->accounts->dropSessions($acc);
         }
-        $this->pdo->prepare("UPDATE privacy_request SET status = 'COMPLETED', handled_by = ?, resolution_note = ?, result = ?, completed_at = UTC_TIMESTAMP() WHERE request_id = ?")
+        $this->pdo->prepare("UPDATE privacy_request SET status = 'COMPLETED', handled_by = ?, resolution_note = ?, result = ?, completed_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE request_id = ?")
             ->execute([$actor['accountId'], mb_substr(trim($note), 0, 400) ?: null, $result, $id]);
         Audit::record($this->pdo, $actor, 'privacy.completed', 'privacy_request', $id, ['type' => $req['type']], $ip);
     }

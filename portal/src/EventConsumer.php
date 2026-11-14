@@ -60,7 +60,9 @@ final class EventConsumer
         if (!in_array($column, self::COLUMNS, true)) {
             throw new \InvalidArgumentException('unknown report column');
         }
-        $this->pdo->prepare("INSERT INTO report_daily (day, `{$column}`, updated_at) VALUES (?, ?, UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE `{$column}` = `{$column}` + VALUES(`{$column}`), updated_at = UTC_TIMESTAMP()")
+        $this->pdo->prepare("MERGE report_daily WITH (HOLDLOCK) AS d USING (SELECT CAST(? AS DATE) AS day, CAST(? AS BIGINT) AS amount) AS s ON d.day = s.day
+                             WHEN MATCHED THEN UPDATE SET [{$column}] = d.[{$column}] + s.amount, updated_at = DATETRUNC(SECOND, SYSUTCDATETIME())
+                             WHEN NOT MATCHED THEN INSERT (day, [{$column}], updated_at) VALUES (s.day, s.amount, DATETRUNC(SECOND, SYSUTCDATETIME()));")
             ->execute([Dates::manilaToday(), $amount]);
     }
 }
