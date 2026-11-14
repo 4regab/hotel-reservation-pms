@@ -153,6 +153,7 @@ $profile = $staff ? '/staff/account' : '/account/profile';
       </ul>
     </div>
   </div>
+  <p class="pointer-events-none select-none overflow-hidden whitespace-nowrap px-4 text-center font-display text-[18vw] font-semibold leading-[0.8] tracking-tighter text-white/90 sm:px-6" aria-hidden="true">MA HOTEL</p>
   <div class="container-page flex flex-wrap justify-between gap-2 border-t border-white/10 py-6 text-xs text-ink-400">
     <p>MA Hotel, Metro Manila, Philippines</p>
     <p>We accept card, GCash and Maya.</p>

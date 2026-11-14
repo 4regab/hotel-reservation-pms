@@ -2,6 +2,45 @@
 (function () {
   'use strict';
 
+  // Landing page motion. The CSS only hides things when this class is present, so without JavaScript all content shows.
+  var calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!calm && 'IntersectionObserver' in window) {
+    document.documentElement.classList.add('js');
+    var seen = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('is-in'); seen.unobserve(en.target); } });
+    }, { rootMargin: '0px 0px -10% 0px' });
+    document.querySelectorAll('[data-reveal]').forEach(function (el) { seen.observe(el); });
+
+    // Story words light up as the paragraph moves up the screen. Screen readers still get the plain sentence.
+    document.querySelectorAll('[data-words]').forEach(function (p) {
+      var text = p.textContent.trim();
+      p.textContent = '';
+      var plain = document.createElement('span');
+      plain.className = 'sr-only';
+      plain.textContent = text;
+      p.appendChild(plain);
+      var words = text.split(/\s+/).map(function (w, i) {
+        var s = document.createElement('span');
+        s.className = 'w';
+        s.setAttribute('aria-hidden', 'true');
+        s.textContent = (i ? ' ' : '') + w;
+        p.appendChild(s);
+        return s;
+      });
+      var ticking = false;
+      function paint() {
+        ticking = false;
+        var r = p.getBoundingClientRect();
+        var h = window.innerHeight;
+        var progress = Math.min(1, Math.max(0, (h * 0.85 - r.top) / (h * 0.55)));
+        var lit = Math.round(progress * words.length);
+        words.forEach(function (w, i) { w.classList.toggle('on', i < lit); });
+      }
+      window.addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(paint); } }, { passive: true });
+      paint();
+    });
+  }
+
   // Keep check-out after check-in in date pickers.
   document.querySelectorAll('[data-date-pair]').forEach(function (form) {
     var inEl = form.querySelector('[data-checkin]');

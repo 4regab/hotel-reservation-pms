@@ -225,3 +225,57 @@
   }
 }
 @keyframes bar-grow { from { transform: scaleX(0.04); } to { transform: scaleX(1); } }
+
+/* ------------------------------------------------------------------------------------------------
+   Landing page (home). Built after the two reference shots the client picked: a dark photo hero that
+   comes into focus, a giant brand word behind the skyline, a frosted booking card, story words that
+   light up as you read, a row of room photos that opens up the one you point at, and photos that
+   float at different speeds. Transform, opacity and filter only. All of it is off under reduced motion,
+   and every part reads normally without it.
+   ------------------------------------------------------------------------------------------------ */
+@layer components {
+  .glass-dark { background-color: rgb(18 26 48 / 0.55); -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2); }
+  .hero-well { @apply rounded-2xl bg-white/10 px-3.5 pb-2 pt-2.5 ring-1 ring-white/15 transition-colors focus-within:bg-white/20 focus-within:ring-white/60; }
+  .hero-well .label { @apply mb-0 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-white/85; }
+  .hero-well .input { @apply min-h-9 rounded-lg border-0 bg-transparent px-1 py-1 text-base font-medium text-white shadow-none sm:text-base; color-scheme: dark; }
+  .hero-well .input:focus { @apply outline-2 outline-offset-2 outline-white; }
+  .hero-well select.input option { @apply bg-ink-900 text-white; }
+  .room-tile { transition: flex-grow 600ms var(--ease-out-strong); }
+}
+/* 64rem is Tailwind's built-in lg breakpoint. */
+@media (min-width: 64rem) {
+  .room-tile { flex: 1 1 0; }
+  .room-row:hover .room-tile, .room-row:focus-within .room-tile { flex-grow: 0.8; }
+  .room-row .room-tile:hover, .room-row .room-tile:focus-within { flex-grow: 2.2; }
+  .room-tile .room-more { opacity: 0; transform: translateY(8px); transition: opacity 300ms ease, transform 300ms var(--ease-out-strong); }
+  .room-tile:hover .room-more, .room-tile:focus-within .room-more { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The hero opens like a camera finding focus, then the brand word and the booking card arrive. */
+  .hero-photo { animation: hero-focus 1800ms var(--ease-out-strong) both; }
+  .hero-word { animation: hero-word 1600ms var(--ease-out-strong) 250ms both; }
+  .hero-card { animation: hero-card 900ms var(--ease-out-strong) 650ms both; }
+  .hero .rise { transition-delay: calc(500ms + var(--i, 0) * 90ms); }
+  /* Sections fade up once as they come into view (app.js adds .is-in). */
+  .js [data-reveal] { opacity: 0; transform: translateY(28px); transition: opacity 800ms var(--ease-out-strong), transform 800ms var(--ease-out-strong); transition-delay: calc(var(--i, 0) * 90ms); }
+  .js [data-reveal].is-in { opacity: 1; transform: none; }
+  /* Story words light up one after another. */
+  .js [data-words] .w { opacity: 0.18; transition: opacity 500ms ease; }
+  .js [data-words] .w.on { opacity: 1; }
+}
+@keyframes hero-focus { from { filter: blur(22px) brightness(0.6); transform: scale(1.14); } to { filter: none; transform: scale(1.02); } }
+@keyframes hero-word { from { opacity: 0; transform: translateY(18%) scale(0.96); letter-spacing: 0.04em; } to { opacity: 1; transform: none; } }
+@keyframes hero-card { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* While scrolling past the hero, the brand word drifts up and the photos float at two speeds. */
+    .hero-word { animation: hero-word 1600ms var(--ease-out-strong) 250ms both, hero-drift linear both; animation-timeline: auto, scroll(root); animation-range: normal, 0 100vh; }
+    .float-slow { animation: float-slow linear both; animation-timeline: view(); }
+    .float-fast { animation: float-fast linear both; animation-timeline: view(); }
+  }
+}
+@keyframes hero-drift { to { translate: 0 -30%; } }
+@keyframes float-slow { from { translate: 0 40px; } to { translate: 0 -40px; } }
+@keyframes float-fast { from { translate: 0 90px; } to { translate: 0 -90px; } }
