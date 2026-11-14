@@ -8,7 +8,8 @@ use Lib\Uuid;
 /** Reservation and guest SQL. Every statement is a PDO prepared statement. */
 final class BookingRepository
 {
-    private const SELECT = 'SELECT r.*, g.account_id AS guest_account_id FROM reservation r JOIN guest g ON g.guest_id = r.guest_id WHERE r.reservation_id = ?';
+    private const SELECT_FROM = 'SELECT r.*, g.account_id AS guest_account_id FROM reservation r';
+    private const SELECT_JOIN = ' JOIN guest g ON g.guest_id = r.guest_id WHERE r.reservation_id = ?';
 
     public function __construct(private \PDO $pdo)
     {
@@ -36,7 +37,7 @@ final class BookingRepository
             return (string) $id;
         }
         $id = Uuid::v4();
-        $this->pdo->prepare('INSERT INTO guest (guest_id, account_id, full_name, email, phone, created_at) VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP())')
+        $this->pdo->prepare('INSERT INTO guest (guest_id, account_id, full_name, email, phone, created_at) VALUES (?, ?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))')
             ->execute([$id, $accountId, $g['fullName'], $g['email'], $g['phone']]);
         return $id;
     }
@@ -50,7 +51,7 @@ final class BookingRepository
 
     public function find(string $id): ?array
     {
-        $st = $this->pdo->prepare(self::SELECT);
+        $st = $this->pdo->prepare(self::SELECT_FROM . self::SELECT_JOIN);
         $st->execute([$id]);
         return $st->fetch() ?: null;
     }
@@ -58,7 +59,7 @@ final class BookingRepository
     /** Row lock on the reservation (take this before any inventory locks). */
     public function lock(string $id): ?array
     {
-        $st = $this->pdo->prepare(self::SELECT . ' FOR UPDATE OF r');
+        $st = $this->pdo->prepare(self::SELECT_FROM . ' WITH (UPDLOCK, ROWLOCK)' . self::SELECT_JOIN);
         $st->execute([$id]);
         return $st->fetch() ?: null;
     }
@@ -67,7 +68,7 @@ final class BookingRepository
     {
         $this->pdo->prepare(
             "INSERT INTO reservation (reservation_id, code, guest_id, room_type_id, check_in, check_out, quantity, status, guarantee, quote_minor, nightly_minor, currency, free_cancel_hours, hold_expires_at, source, adults, special_requests, version, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'HELD', 'NONE', ?, ?, ?, ?, ?, ?, ?, ?, 1, UTC_TIMESTAMP(), UTC_TIMESTAMP())"
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'HELD', 'NONE', ?, ?, ?, ?, ?, ?, ?, ?, 1, DATETRUNC(SECOND, SYSUTCDATETIME()), DATETRUNC(SECOND, SYSUTCDATETIME()))"
         )->execute([$r['id'], self::newCode(), $r['guestId'], $r['roomTypeId'], $r['checkIn'], $r['checkOut'], $r['quantity'], $r['quoteMinor'], $r['nightlyMinor'], $r['currency'], $r['freeCancelHours'], $r['holdExpiresAt'],
             $r['source'] ?? 'DIRECT', $r['adults'] ?? 1, $r['specialRequests'] ?? null]);
     }
@@ -86,20 +87,26 @@ final class BookingRepository
     /** Record when payment arrived (event time) and when the booking became CONFIRMED. */
     public function markConfirmed(string $id, ?string $paidAtSql): void
     {
-        $this->pdo->prepare('UPDATE reservation SET confirmed_at = UTC_TIMESTAMP(), paid_at = COALESCE(?, paid_at), guarantee_requested = 0 WHERE reservation_id = ?')->execute([$paidAtSql, $id]);
+        $this->pdo->prepare('UPDATE reservation SET confirmed_at = DATETRUNC(SECOND, SYSUTCDATETIME()), paid_at = COALESCE(?, paid_at), guarantee_requested = 0 WHERE reservation_id = ?')->execute([$paidAtSql, $id]);
     }
 
     /** Returns the new version (caller holds the row lock). */
     public function setStatus(array $r, string $status, ?string $guarantee = null): int
     {
-        $this->pdo->prepare('UPDATE reservation SET status = ?, guarantee = COALESCE(?, guarantee), version = version + 1, updated_at = UTC_TIMESTAMP() WHERE reservation_id = ?')
+        $this->pdo->prepare('UPDATE reservation SET status = ?, guarantee = COALESCE(?, guarantee), version = version + 1, updated_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE reservation_id = ?')
             ->execute([$status, $guarantee, $r['reservation_id']]);
         return (int) $r['version'] + 1;
     }
 
     public function insertAllocations(string $reservationId, string $roomTypeId, array $nights, int $qty, string $state): void
     {
-        $st = $this->pdo->prepare('INSERT INTO allocation (reservation_id, stay_date, room_type_id, quantity, state) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE quantity = VALUES(quantity), state = VALUES(state)');
+        $st = $this->pdo->prepare(
+            'MERGE allocation WITH (HOLDLOCK) AS d
+             USING (SELECT ? AS reservation_id, CAST(? AS DATE) AS stay_date, ? AS room_type_id, CAST(? AS TINYINT) AS quantity, ? AS state) AS s
+                ON d.reservation_id = s.reservation_id AND d.stay_date = s.stay_date
+              WHEN MATCHED THEN UPDATE SET quantity = s.quantity, state = s.state
+              WHEN NOT MATCHED THEN INSERT (reservation_id, stay_date, room_type_id, quantity, state) VALUES (s.reservation_id, s.stay_date, s.room_type_id, s.quantity, s.state);'
+        );
         foreach ($nights as $n) {
             $st->execute([$reservationId, $n, $roomTypeId, $qty, $state]);
         }
@@ -113,6 +120,6 @@ final class BookingRepository
     /** Holds whose 10 minutes are up. */
     public function expiredHoldIds(int $limit = 100): array
     {
-        return $this->pdo->query("SELECT reservation_id FROM reservation WHERE status = 'HELD' AND hold_expires_at <= UTC_TIMESTAMP() ORDER BY hold_expires_at LIMIT " . max(1, $limit))->fetchAll(\PDO::FETCH_COLUMN);
+        return $this->pdo->query("SELECT TOP (" . max(1, $limit) . ") reservation_id FROM reservation WHERE status = 'HELD' AND hold_expires_at <= DATETRUNC(SECOND, SYSUTCDATETIME()) ORDER BY hold_expires_at")->fetchAll(\PDO::FETCH_COLUMN);
     }
 }

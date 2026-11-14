@@ -113,13 +113,13 @@ final class BookingWorkflow
                 $penalty = min($penalty, (int) $r['quote_minor']);
                 Outbox::add($this->pdo, 'ReservationCancelled', $reservationId, $version, $reservationId, ['reservationId' => $reservationId, 'penaltyMinor' => $penalty, 'currency' => $r['currency']]);
                 $refund = (int) $r['quote_minor'] - $penalty;
-                $this->pdo->prepare('UPDATE reservation SET cancelled_at = UTC_TIMESTAMP(), penalty_minor = ? WHERE reservation_id = ?')->execute([$penalty, $reservationId]);
+                $this->pdo->prepare('UPDATE reservation SET cancelled_at = DATETRUNC(SECOND, SYSUTCDATETIME()), penalty_minor = ? WHERE reservation_id = ?')->execute([$penalty, $reservationId]);
                 if ($r['guarantee'] === 'PAID' && $refund > 0) {
                     Outbox::add($this->pdo, 'RefundRequested', $reservationId, $version, $reservationId, ['reservationId' => $reservationId, 'amountMinor' => $refund, 'currency' => $r['currency'], 'reason' => 'CANCELLATION']);
                 }
             }
             if ($r['status'] === S::HELD) {
-                $this->pdo->prepare('UPDATE reservation SET cancelled_at = UTC_TIMESTAMP() WHERE reservation_id = ?')->execute([$reservationId]);
+                $this->pdo->prepare('UPDATE reservation SET cancelled_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE reservation_id = ?')->execute([$reservationId]);
             }
             return [200, ['reservationId' => $reservationId, 'status' => S::CANCELLED, 'penaltyMinor' => $penalty, 'currency' => $r['currency']]];
         });
@@ -179,8 +179,12 @@ final class BookingWorkflow
     {
         return Tx::run($this->pdo, function () use ($requestId, $roomTypeId, $start, $end): array {
             $nights = Dates::nights($start, $end);
-            $ins = $this->pdo->prepare('INSERT IGNORE INTO maintenance_capacity (request_id, room_type_id, start_date, end_date, created_at) VALUES (?, ?, ?, ?, UTC_TIMESTAMP())');
-            $ins->execute([$requestId, $roomTypeId, $start, $end]);
+            $ins = $this->pdo->prepare(
+                'INSERT INTO maintenance_capacity (request_id, room_type_id, start_date, end_date, created_at)
+                 SELECT ?, ?, CAST(? AS DATE), CAST(? AS DATE), DATETRUNC(SECOND, SYSUTCDATETIME())
+                  WHERE NOT EXISTS (SELECT 1 FROM maintenance_capacity WITH (UPDLOCK, HOLDLOCK) WHERE request_id = ?)'
+            );
+            $ins->execute([$requestId, $roomTypeId, $start, $end, $requestId]);
             if ($ins->rowCount() === 0) {
                 return [200, ['requestId' => $requestId, 'status' => 'BLOCKED', 'replayed' => true]];
             }
@@ -225,7 +229,7 @@ final class BookingWorkflow
             $this->repo->setAllocationState($reservationId, 'RELEASED');
             $version = $this->repo->setStatus($r, S::NO_SHOW);
             $penalty = $waive ? 0 : min((int) $r['quote_minor'], (int) $r['nightly_minor'] * (int) $r['quantity']);
-            $this->pdo->prepare('UPDATE reservation SET no_show_at = UTC_TIMESTAMP(), penalty_minor = ? WHERE reservation_id = ?')->execute([$penalty, $reservationId]);
+            $this->pdo->prepare('UPDATE reservation SET no_show_at = DATETRUNC(SECOND, SYSUTCDATETIME()), penalty_minor = ? WHERE reservation_id = ?')->execute([$penalty, $reservationId]);
             Outbox::add($this->pdo, 'ReservationNoShow', $reservationId, $version, $reservationId, ['reservationId' => $reservationId, 'penaltyMinor' => $penalty, 'currency' => $r['currency']]);
             $refund = (int) $r['quote_minor'] - $penalty;
             if ($r['guarantee'] === 'PAID' && $refund > 0) {

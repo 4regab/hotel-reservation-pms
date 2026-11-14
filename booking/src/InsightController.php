@@ -85,11 +85,11 @@ final class InsightController
     {
         $oversold = (int) $this->pdo->query('SELECT COUNT(*) FROM inventory_night WHERE blocked + held + confirmed + ota_remaining > capacity')->fetchColumn();
         $confirmed = (int) $this->pdo->query("SELECT COUNT(*) FROM reservation WHERE status IN ('CONFIRMED','CHECKED_IN','CHECKED_OUT')")->fetchColumn();
-        $paid = $this->pdo->prepare("SELECT COUNT(*) AS n, SUM(TIMESTAMPDIFF(SECOND, paid_at, confirmed_at) <= 120) AS fast FROM reservation
-                                      WHERE source = 'DIRECT' AND guarantee = 'PAID' AND paid_at IS NOT NULL AND confirmed_at IS NOT NULL AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)");
+        $paid = $this->pdo->prepare("SELECT COUNT(*) AS n, SUM(CASE WHEN DATEDIFF_BIG(SECOND, paid_at, confirmed_at) <= 120 THEN 1 ELSE 0 END) AS fast FROM reservation
+                                      WHERE source = 'DIRECT' AND guarantee = 'PAID' AND paid_at IS NOT NULL AND confirmed_at IS NOT NULL AND created_at >= ? AND created_at < DATEADD(DAY, 1, CAST(? AS DATE))");
         $paid->execute([$from, $to]);
         $p = $paid->fetch();
-        $dup = GuestController::groups($this->pdo->query("SELECT g.guest_id, g.full_name, g.email, g.phone, g.account_id IS NOT NULL AS has_account, g.created_at, 0 AS bookings FROM guest g WHERE g.merged_into IS NULL AND g.anonymized_at IS NULL")->fetchAll());
+        $dup = GuestController::groups($this->pdo->query("SELECT g.guest_id, g.full_name, g.email, g.phone, CASE WHEN g.account_id IS NOT NULL THEN 1 ELSE 0 END AS has_account, g.created_at, 0 AS bookings FROM guest g WHERE g.merged_into IS NULL AND g.anonymized_at IS NULL")->fetchAll());
         $activeGuests = (int) $this->pdo->query('SELECT COUNT(*) FROM guest WHERE merged_into IS NULL AND anonymized_at IS NULL')->fetchColumn();
         $dupGuests = 0;
         foreach ($dup as $g) {
@@ -105,7 +105,7 @@ final class InsightController
     private function bookingCounts(string $from, string $to): array
     {
         $st = $this->pdo->prepare(
-            "SELECT status, source, COUNT(*) AS n FROM reservation WHERE created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY) GROUP BY status, source"
+            "SELECT status, source, COUNT(*) AS n FROM reservation WHERE created_at >= ? AND created_at < DATEADD(DAY, 1, CAST(? AS DATE)) GROUP BY status, source"
         );
         $st->execute([$from, $to]);
         $byStatus = [];

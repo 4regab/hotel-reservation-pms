@@ -14,18 +14,19 @@ final class InventoryAllocator
     public function ensureNights(string $roomTypeId, array $nights): void
     {
         $st = $this->pdo->prepare(
-            'INSERT IGNORE INTO inventory_night (room_type_id, stay_date, capacity, blocked, held, confirmed, ota_remaining)
-             SELECT room_type_id, ?, capacity, 0, 0, 0, 0 FROM room_type WHERE room_type_id = ?'
+            'INSERT INTO inventory_night (room_type_id, stay_date, capacity, blocked, held, confirmed, ota_remaining)
+             SELECT room_type_id, CAST(? AS DATE), capacity, 0, 0, 0, 0 FROM room_type WHERE room_type_id = ?
+                AND NOT EXISTS (SELECT 1 FROM inventory_night WITH (UPDLOCK, HOLDLOCK) WHERE room_type_id = ? AND stay_date = CAST(? AS DATE))'
         );
         foreach ($nights as $n) {
-            $st->execute([$n, $roomTypeId]);
+            $st->execute([$n, $roomTypeId, $roomTypeId, $n]);
         }
     }
 
     /** Lock all nights in date order (consistent order prevents deadlocks). Must run inside a transaction. */
     public function lock(string $roomTypeId, array $nights): array
     {
-        return $this->load($roomTypeId, $nights, ' FOR UPDATE');
+        return $this->load($roomTypeId, $nights, ' WITH (UPDLOCK, ROWLOCK)');
     }
 
     /** Unlocked read for availability search. Missing nights count as fully free. */
@@ -50,8 +51,8 @@ final class InventoryAllocator
     private function load(string $roomTypeId, array $nights, string $lock): array
     {
         $st = $this->pdo->prepare(
-            'SELECT stay_date, capacity, blocked, held, confirmed, ota_remaining FROM inventory_night
-              WHERE room_type_id = ? AND stay_date BETWEEN ? AND ? ORDER BY stay_date' . $lock
+            'SELECT stay_date, capacity, blocked, held, confirmed, ota_remaining FROM inventory_night' . $lock . '
+              WHERE room_type_id = ? AND stay_date BETWEEN ? AND ? ORDER BY stay_date'
         );
         $st->execute([$roomTypeId, $nights[0], $nights[count($nights) - 1]]);
         $rows = [];

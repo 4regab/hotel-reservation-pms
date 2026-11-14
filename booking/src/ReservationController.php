@@ -135,8 +135,8 @@ final class ReservationController
             $args[] = $user['accountId'];
         }
         if (!empty($q['q'])) {
-            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], trim((string) $q['q'])) . '%';
-            $where[] = '(r.code LIKE ? OR g.full_name LIKE ? OR g.email LIKE ?)';
+            $like = '%' . str_replace(['%', '_', '['], ['\\%', '\\_', '\\['], trim((string) $q['q'])) . '%';
+            $where[] = "(r.code LIKE ? ESCAPE '\\' OR g.full_name LIKE ? ESCAPE '\\' OR g.email LIKE ? ESCAPE '\\')";
             array_push($args, $like, $like, $like);
         }
         if (!empty($q['status'])) {
@@ -158,7 +158,7 @@ final class ReservationController
             array_push($args, ...$ids);
         }
         if (!empty($q['guaranteeRequested'])) {
-            $where[] = "r.guarantee_requested = 1 AND r.status = 'HELD' AND r.hold_expires_at > UTC_TIMESTAMP()";
+            $where[] = "r.guarantee_requested = 1 AND r.status = 'HELD' AND r.hold_expires_at > DATETRUNC(SECOND, SYSUTCDATETIME())";
         }
         if (!empty($q['source']) && in_array($q['source'], ['DIRECT', 'WALK_IN', 'OTA'], true)) {
             $where[] = 'r.source = ?';
@@ -169,7 +169,7 @@ final class ReservationController
         $st = $this->pdo->prepare(
             'SELECT r.*, g.account_id AS guest_account_id, g.full_name, g.email, g.phone, t.name AS type_name, t.slug AS type_slug
                FROM reservation r JOIN guest g ON g.guest_id = r.guest_id JOIN room_type t ON t.room_type_id = r.room_type_id
-              WHERE ' . implode(' AND ', $where) . " ORDER BY {$order} LIMIT {$limit}"
+              WHERE ' . implode(' AND ', $where) . " ORDER BY {$order} OFFSET 0 ROWS FETCH NEXT {$limit} ROWS ONLY"
         );
         $st->execute($args);
         return [200, ['reservations' => array_map(fn ($row) => $this->view($row, $user), $st->fetchAll())]];
