@@ -10,10 +10,9 @@ $faq = [
 ];
 ?>
 <!-- 1. Hero -->
-<section class="relative isolate overflow-hidden bg-brand-950 text-white" aria-labelledby="hero-h">
-  <img src="/assets/img/hero-harbor.svg" alt="" class="hero-photo absolute inset-0 -z-20 size-full object-cover" width="1600" height="700" fetchpriority="high">
-  <div class="absolute inset-0 -z-10 bg-gradient-to-r from-brand-950/90 via-brand-950/55 to-brand-950/5"></div>
-  <div class="absolute inset-x-0 bottom-0 -z-10 h-40 bg-gradient-to-t from-brand-950/70 to-transparent"></div>
+<section class="relative isolate overflow-hidden bg-[#181729] text-white" aria-labelledby="hero-h">
+  <img src="/assets/img/hero-manila-night.webp" alt="" class="absolute inset-x-0 bottom-0 -z-20 h-[clamp(14rem,27vw,25rem)] w-full object-cover object-[50%_60%] [mask-image:linear-gradient(to_bottom,transparent,black_60%)]" width="3008" height="784" fetchpriority="high">
+  <div class="absolute inset-x-0 bottom-0 -z-10 h-32 bg-gradient-to-t from-[#181729]/60 to-transparent"></div>
   <div class="container-page flex min-h-[34rem] flex-col justify-center pb-40 pt-16 sm:min-h-[38rem] lg:min-h-[44rem] lg:pb-48">
     <p class="rise [--i:0] inline-flex w-fit items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-lantern-400"><?= icon('sparkle', 'size-4') ?> Boutique hotel, Metro Manila</p>
     <h1 id="hero-h" class="rise [--i:1] text-balance mt-5 max-w-3xl font-display text-5xl font-bold leading-[1.05] tracking-tight text-white sm:text-6xl lg:text-7xl">Wake up to the harbor.<span class="block text-brand-200">Be anywhere in minutes.</span></h1>
@@ -137,7 +136,7 @@ $faq = [
 <!-- 8. Closing call to action -->
 <section class="container-page mt-20 sm:mt-28" aria-labelledby="cta-h">
   <div class="relative isolate overflow-hidden rounded-3xl bg-brand-900 px-6 py-14 text-center text-white sm:px-12 sm:py-20" data-reveal>
-    <img src="/assets/img/hero-harbor.svg" alt="" class="absolute inset-0 -z-10 size-full object-cover opacity-40" width="1600" height="700" loading="lazy">
+    <img src="/assets/img/hero-manila-night.webp" alt="" class="absolute inset-0 -z-10 size-full object-cover opacity-50" width="3008" height="784" loading="lazy">
     <div class="absolute inset-0 -z-10 bg-brand-950/70"></div>
     <h2 id="cta-h" class="text-balance mx-auto max-w-2xl font-display text-4xl font-bold tracking-tight text-white sm:text-5xl">Your room is waiting by the water.</h2>
     <p class="text-pretty mx-auto mt-4 max-w-xl text-lg text-brand-100">Book direct for the best rate, with free cancellation until 48 hours before arrival.</p>
