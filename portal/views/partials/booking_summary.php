@@ -11,7 +11,7 @@
     <div><dt class="text-ink-600">Check-out</dt><dd class="font-medium text-ink-950"><?= e(d($r['checkOut'])) ?> by 12:00 noon</dd></div>
     <div><dt class="text-ink-600">Nights</dt><dd class="font-medium text-ink-950"><?= e(Portal\Fmt::nights($r['checkIn'], $r['checkOut'])) ?></dd></div>
     <div><dt class="text-ink-600">Guests</dt><dd class="font-medium text-ink-950"><?= e($r['adults']) ?></dd></div>
-    <div><dt class="text-ink-600">Total</dt><dd class="font-display text-xl font-medium text-ink-950"><?= e(php_money($r['amountMinor'])) ?></dd></div>
+    <div><dt class="text-ink-600">Total</dt><dd class="font-display text-xl font-medium text-ink-950"><?= e(php_money($r['amountMinor'])) ?></dd><dd class="text-xs text-ink-600">includes <?= e(php_money(price_parts((int) $r['amountMinor'], 1)['vat'])) ?> VAT (12%)</dd></div>
     <div><dt class="text-ink-600">Payment</dt><dd class="font-medium"><?= badge($r['guarantee']) ?></dd></div>
     <?php if (!empty($r['specialRequests'])) { ?><div class="sm:col-span-2"><dt class="text-ink-600">Special requests</dt><dd class="text-ink-900"><?= e($r['specialRequests']) ?></dd></div><?php } ?>
   </dl>

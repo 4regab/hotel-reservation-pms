@@ -117,10 +117,44 @@ function icon(string $name, string $class = 'size-5'): string
         'arrow' => 'M7 17L17 7M8.25 7H17v8.75',
         'pin' => 'M12 21s-6.75-5.4-6.75-11.25a6.75 6.75 0 0113.5 0C18.75 15.6 12 21 12 21zM12 12.25a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
         'expand' => 'M3.75 8.25V3.75h4.5M20.25 8.25V3.75h-4.5M3.75 15.75v4.5h4.5M20.25 15.75v4.5h-4.5',
+        'home' => 'M3 10.5L12 3.75l9 6.75M5.25 9v11.25h13.5V9M9.75 20.25v-6h4.5v6',
+        'desk' => 'M3 9.75h18M4.5 9.75v10.5M19.5 9.75v10.5M8.25 6.75h7.5a1.5 1.5 0 011.5 1.5v1.5h-10.5v-1.5a1.5 1.5 0 011.5-1.5zM12 3.75v3',
+        'globe' => 'M12 21a9 9 0 100-18 9 9 0 000 18zM3.6 9h16.8M3.6 15h16.8M12 3c2.25 2.4 3.4 5.4 3.4 9s-1.15 6.6-3.4 9c-2.25-2.4-3.4-5.4-3.4-9S9.75 5.4 12 3z',
+        'wrench' => 'M14.7 6.3a4.5 4.5 0 005.86 5.86L13.5 19.2a2.12 2.12 0 01-3-3l7.04-7.04A4.5 4.5 0 0011.7 3.3l3 3z',
+        'cash' => 'M2.25 7.5h19.5v10.5H2.25V7.5zM12 15.75a3 3 0 100-6 3 3 0 000 6zM5.25 10.5v3M18.75 10.5v3',
+        'chart' => 'M3.75 20.25h16.5M6.75 16.5v-4.5M11.25 16.5V7.5M15.75 16.5v-6M20.25 16.5V4.5',
+        'sliders' => 'M4.5 6h9M17.25 6h2.25M4.5 12h3M11.25 12h8.25M4.5 18h9M17.25 18h2.25M15.375 7.875a1.875 1.875 0 100-3.75 1.875 1.875 0 000 3.75zM9.375 13.875a1.875 1.875 0 100-3.75 1.875 1.875 0 000 3.75zM15.375 19.875a1.875 1.875 0 100-3.75 1.875 1.875 0 000 3.75z',
+        'list' => 'M8.25 6.75h12M8.25 12h12M8.25 17.25h12M3.75 6.75h.01M3.75 12h.01M3.75 17.25h.01',
+        'pulse' => 'M2.25 12h4.5l2.25-6 4.5 12 2.25-6h6',
+        'logout' => 'M15.75 9V5.25a1.5 1.5 0 00-1.5-1.5h-7.5a1.5 1.5 0 00-1.5 1.5v13.5a1.5 1.5 0 001.5 1.5h7.5a1.5 1.5 0 001.5-1.5V15M12 12h9m0 0l-3-3m3 3l-3 3',
         'users' => 'M15 19.5a6 6 0 00-12 0M9 11.25a3.75 3.75 0 100-7.5 3.75 3.75 0 000 7.5zM21 19.5a5.25 5.25 0 00-4.5-5.2M15.75 4.1a3.75 3.75 0 010 7.05',
     ];
     $p = $paths[$name] ?? $paths['check'];
     return '<svg class="' . e($class) . '" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="' . e($p) . '"/></svg>';
+}
+
+/**
+ * Split a tax-inclusive room total for display. Prices already include the Philippines' 12% VAT, so this only
+ * shows what the total is made of; it never changes an amount.
+ * @return array{rate:?int,net:int,vat:int} rate per room per night (null when it does not divide evenly)
+ */
+function price_parts(int $totalMinor, int $nights, int $rooms = 1): array
+{
+    $units = max(1, $nights) * max(1, $rooms);
+    $net = (int) round($totalMinor / 1.12);
+    return ['rate' => $totalMinor % $units === 0 ? intdiv($totalMinor, $units) : null, 'net' => $net, 'vat' => $totalMinor - $net];
+}
+
+/** The price breakdown rows used on the booking, payment and checkout pages. */
+function price_rows(int $totalMinor, int $nights, int $rooms = 1): string
+{
+    $p = price_parts($totalMinor, $nights, $rooms);
+    $what = $nights . ($nights === 1 ? ' night' : ' nights') . ($rooms > 1 ? ' x ' . $rooms . ' rooms' : '');
+    $row = fn (string $k, string $v, string $cls = '') => '<div class="flex justify-between gap-3 ' . $cls . '"><dt class="text-ink-600">' . $k . '</dt><dd class="tabular-nums text-ink-950">' . $v . '</dd></div>';
+    return ($p['rate'] !== null ? $row(e(php_money($p['rate'])) . ' x ' . e($what), e(php_money($totalMinor))) : $row('Room, ' . e($what), e(php_money($totalMinor))))
+        . $row('Price before VAT', e(php_money($p['net'])), 'text-sm')
+        . $row('VAT (12%)', e(php_money($p['vat'])), 'text-sm')
+        . '<div class="flex items-baseline justify-between gap-3 border-t border-ink-200 pt-3"><dt class="font-semibold text-ink-950">Total <span class="block text-xs font-normal text-ink-600">VAT included</span></dt><dd class="font-display text-2xl font-medium tabular-nums text-ink-950 sm:text-3xl">' . e(php_money($totalMinor)) . '</dd></div>';
 }
 
 /** Today's date in Manila as Y-m-d. */

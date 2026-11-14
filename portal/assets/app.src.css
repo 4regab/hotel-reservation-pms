@@ -90,10 +90,11 @@
   .photo::after { content: ""; @apply pointer-events-none absolute inset-0 rounded-[inherit] ring-1 ring-inset ring-black/5; }
 
   /* Buttons: pills. Primary = clay (the main action on a page), dark = ink, secondary = white outline. */
-  .btn { @apply inline-flex min-h-11 whitespace-nowrap items-center justify-center gap-2 rounded-full px-5 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60; transition: transform 160ms var(--ease-out-strong), background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease; }
+  .btn { @apply inline-flex h-12 shrink-0 whitespace-nowrap items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50; transition: transform 160ms var(--ease-out-strong), background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease; }
   .btn:active:not(:disabled) { transform: scale(0.97); }
-  .btn-lg { @apply min-h-12 px-6 py-3 text-base; }
-  .btn-sm { @apply min-h-9 px-3.5 py-1.5 text-sm; }
+  .btn-lg { @apply h-12 px-6 text-base; }
+  .btn-sm { @apply h-11 px-4 text-sm; }
+  .btn[aria-busy="true"] { @apply cursor-progress opacity-70; }
   .btn-primary { @apply bg-clay-500 text-ink-950 hover:bg-clay-400; }
   .btn-dark { @apply bg-ink-900 text-white hover:bg-ink-700; }
   .btn-light { @apply bg-white text-ink-950 hover:bg-ink-100; }
@@ -109,15 +110,17 @@
   /* Forms */
   .label { @apply mb-1.5 block text-sm font-medium text-ink-800; }
   .hint { @apply mt-1.5 text-sm text-ink-600; }
-  .input { @apply block min-h-11 w-full rounded-xl border border-ink-300 bg-white px-3.5 py-2 text-base text-ink-950 placeholder:text-ink-500 sm:text-sm; transition: border-color 160ms ease, box-shadow 160ms ease; }
+  .input { @apply block min-h-12 w-full rounded-xl border border-ink-300 bg-white px-3.5 py-2 text-base text-ink-950 placeholder:text-ink-500 sm:text-sm; transition: border-color 160ms ease, box-shadow 160ms ease; }
   .input:hover { @apply border-ink-400; }
   .input:focus { @apply border-clay-700 outline-2 outline-offset-0 outline-clay-700; }
+  .input[aria-invalid="true"] { @apply border-red-700; }
+  .input:disabled { @apply cursor-not-allowed bg-ink-50 text-ink-500; }
 
   /* The floating booking bar: labelled wells and one accent button. */
   .search-bar { @apply rounded-3xl bg-white p-3 shadow-float ring-1 ring-black/5 sm:p-4; }
-  .field-well { @apply rounded-2xl bg-ink-50 px-4 pb-2 pt-2.5 transition-colors focus-within:bg-white; }
+  .field-well { @apply rounded-2xl bg-ink-50 px-4 pb-1 pt-2 transition-colors focus-within:bg-white; }
   .field-well .label { @apply mb-0 text-xs font-semibold uppercase tracking-wide text-ink-600; }
-  .field-well .input { @apply min-h-9 rounded-lg border-0 bg-transparent px-1 py-1 text-base font-medium shadow-none sm:text-base; }
+  .field-well .input { @apply min-h-11 rounded-lg border-0 bg-transparent px-1 py-1 text-base font-medium shadow-none sm:text-base; }
   .field-well .input:focus { @apply border-0 outline-2 outline-offset-2 outline-clay-700; }
 
   /* Text pieces */
@@ -157,7 +160,8 @@
 
   /* Tables */
   .table-wrap { @apply relative overflow-x-auto rounded-2xl border border-ink-200/70 bg-white shadow-soft; }
-  .table { @apply w-full text-left text-sm; }
+  .table { @apply w-full min-w-[40rem] text-left text-sm; }
+  .table-fit { @apply min-w-0; }
   .table th { @apply whitespace-nowrap border-b border-ink-200 bg-ink-50 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-ink-600; }
   .table td { @apply border-b border-ink-100 px-3 py-3 align-top; overflow-wrap: break-word; }
   .table tbody th { @apply border-b border-ink-100 px-3 py-3 text-left align-top text-sm font-medium normal-case tracking-normal text-ink-950 bg-white; }
@@ -172,7 +176,7 @@
   .alert-warn { @apply border-amber-200 bg-amber-50 text-amber-900; }
 
   /* Nav links */
-  .nav-link { @apply whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium text-ink-700 hover:bg-ink-900/5 hover:text-ink-950; }
+  .nav-link { @apply inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-medium text-ink-700 hover:bg-ink-900/5 hover:text-ink-950; }
   .nav-link[aria-current="page"] { @apply bg-ink-900 text-white hover:bg-ink-900 hover:text-white; }
   .on-photo .nav-link { @apply text-white/90 hover:bg-white/15 hover:text-white; }
   .on-photo .nav-link[aria-current="page"] { @apply bg-white text-ink-950; }
@@ -180,9 +184,38 @@
   .on-photo details .nav-link[aria-current="page"] { @apply bg-ink-900 text-white; }
 
   /* Staff shell: sidebar from xl up, a scrolling tab row below. */
-  .staff-nav-link { @apply flex min-h-10 items-center whitespace-nowrap rounded-xl px-3 text-sm font-medium text-ink-700 hover:bg-ink-100 hover:text-ink-950; }
-  .staff-nav-link[aria-current="page"] { @apply bg-ink-900 text-white hover:bg-ink-900 hover:text-white; }
-  .staff .page-title { @apply text-2xl sm:text-3xl; }
+  .staff-nav-link { @apply flex min-h-11 items-center gap-3 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-ink-700 hover:bg-ink-100 hover:text-ink-950 xl:min-h-9; }
+  .staff-nav-link svg { @apply text-ink-500; }
+  .staff-nav-link[aria-current="page"] { @apply bg-white text-ink-950 shadow-soft ring-1 ring-ink-200; }
+  .staff-nav-link[aria-current="page"] svg { @apply text-clay-700; }
+  /* Tabs: a segmented row. The current tab is white on the grey track. */
+  .tabs { @apply inline-flex max-w-full gap-1 overflow-x-auto rounded-xl bg-ink-100 p-1; }
+  .tab { @apply inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3.5 text-sm font-medium text-ink-700 hover:text-ink-950; }
+  .tab[aria-current="page"] { @apply bg-white text-ink-950 shadow-soft; }
+  .staff .tab { @apply lg:min-h-8; }
+  .tab .badge { @apply bg-ink-200/70 text-ink-800; }
+
+  /* Staff workspace: denser and calmer than the public site. Smaller type, 12px-radius controls, a navy
+     main button (tangerine stays on the public site), quiet tables. Controls stay 44px tall on touch
+     screens and drop to 36px on a desktop. */
+  .staff { @apply bg-ink-50; }
+  .staff .page-title { @apply font-sans text-2xl font-semibold tracking-tight; }
+  .staff main h2 { @apply font-sans tracking-tight; }
+  .staff .btn { @apply h-11 rounded-xl px-4 text-sm lg:h-9 lg:px-3.5; }
+  .staff .btn-primary { @apply bg-ink-900 text-white hover:bg-ink-800; }
+  .staff .btn-secondary { @apply border-ink-200 shadow-soft; }
+  .staff .input { @apply min-h-11 rounded-xl text-sm lg:min-h-9 lg:py-1.5; }
+  .staff .label { @apply mb-1 text-xs font-medium text-ink-600; }
+  .staff .card { @apply rounded-xl shadow-none; }
+  .staff .card-pad { @apply p-4 sm:p-5; }
+  .staff .table-wrap { @apply rounded-xl shadow-none; }
+  .staff .table thead th { @apply bg-white py-2.5 text-[0.6875rem] text-ink-500; }
+  .staff .table td, .staff .table tbody th { @apply py-2.5; }
+  .staff .empty { @apply rounded-xl border-dashed shadow-none; }
+  .staff h2.text-xl, .staff h2.text-lg { @apply text-base font-semibold; }
+  .kpi-label { @apply text-xs font-medium text-ink-600; }
+  .kpi-value { @apply mt-1 whitespace-nowrap text-2xl font-semibold tabular-nums tracking-tight text-ink-950; }
+  .kpi-note { @apply mt-1 text-xs text-ink-600; }
 }
 
 @media print {
@@ -215,8 +248,8 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .lift:hover { transform: translateY(-4px); box-shadow: 0 24px 48px -24px rgb(11 16 21 / 0.35); }
-  .group:hover .zoom-img { transform: scale(1.045); }
+  .lift:hover { transform: translateY(-2px); box-shadow: 0 18px 36px -24px rgb(11 16 21 / 0.3); }
+  .group:hover .zoom-img { transform: scale(1.03); }
 }
 
 @supports (animation-timeline: view()) {
@@ -225,3 +258,74 @@
   }
 }
 @keyframes bar-grow { from { transform: scaleX(0.04); } to { transform: scaleX(1); } }
+
+/* ------------------------------------------------------------------------------------------------
+   Landing page (home), after the two reference shots the client picked: an inset photo hero with the
+   brand word behind the skyline and a frosted booking card; a statement that turns to ink as you read
+   it; room tiles that open up the one you point at; and a pinned story in four photographs. Motion is
+   transform, opacity and clip only, and all of it rests under reduced motion with nothing hidden.
+   ------------------------------------------------------------------------------------------------ */
+@layer components {
+  .glass-dark { background-color: rgb(18 26 48 / 0.55); -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2); }
+  .hero-well { @apply rounded-2xl bg-white/10 px-3.5 pb-1 pt-2 ring-1 ring-white/15 transition-colors focus-within:bg-white/20 focus-within:ring-white/60; }
+  .hero-well .label { @apply mb-0 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-white/85; }
+  .hero-well .input { @apply min-h-11 rounded-lg border-0 bg-transparent px-1 py-1 text-base font-medium text-white shadow-none sm:text-base; color-scheme: dark; }
+  .hero-well .input:focus { @apply outline-2 outline-offset-2 outline-white; }
+  .hero-well select.input option { @apply bg-ink-900 text-white; }
+  .room-tile { transition: flex-grow 600ms var(--ease-out-strong); }
+
+  /* The statement: every word rests at ink-500 (4.8:1, readable) and turns to ink as it crosses the screen. */
+  .js [data-words] .w { color: var(--color-ink-500); transition: color 300ms ease; }
+  .js [data-words] .w.on { color: var(--color-ink-950); }
+  .js [data-words] strong.w.on, .js [data-words] .w.on strong { color: var(--color-clay-700); }
+
+  /* Stay chapters. At rest (no script, reduced motion, a short screen): four photo cards in a row. */
+  .chapters-list { @apply mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4; }
+  .chapter-pic { @apply mb-4 aspect-[4/3] overflow-hidden rounded-3xl bg-ink-200; }
+  .chapter-pic img { @apply size-full object-cover; }
+  .chapter-count { @apply hidden; }
+  /* Live (.is-live, app.js): the section is pinned for four screens of scroll; each next photograph is
+     uncovered from its foot over the last, and the panel changes to its chapter half way through. */
+  .chapters.is-live { height: calc(5 * 100svh); }
+  .chapters.is-live .chapters-box { @apply sticky top-0 flex h-svh flex-col gap-6 py-6 sm:py-8; }
+  .chapters.is-live .chapters-stage { @apply relative min-h-0 flex-1 overflow-hidden rounded-[2rem] bg-ink-950; }
+  .chapters.is-live .chapters-stage > .chapter-pic { @apply absolute inset-0 m-0 aspect-auto rounded-none; clip-path: inset(var(--c, 0%) 0 0 0); }
+  .chapters.is-live .chapters-stage > .chapter-pic img { transform: scale(var(--z, 1)); transform-origin: 50% 100%; }
+  .chapters.is-live .chapters-panel { @apply absolute bottom-4 left-4 right-4 z-10 grid gap-3 rounded-3xl bg-white p-6 shadow-float sm:bottom-6 sm:left-6 sm:right-auto sm:w-[26rem] sm:p-7; }
+  .chapters.is-live .chapter-count { @apply block text-sm font-semibold tabular-nums text-clay-700; }
+  .chapters.is-live .chapters-list { @apply mt-0 grid grid-cols-1 gap-0; }
+  .chapters.is-live .chapter-num { @apply hidden; }
+  .chapters.is-live .chapter { grid-area: 1 / 1; }
+  .chapters.is-live .chapter-words { opacity: 0; transform: translateY(8px); transition: opacity 200ms ease, transform 200ms ease; pointer-events: none; }
+  .chapters.is-live .chapter.is-on .chapter-words { opacity: 1; transform: none; transition: opacity 400ms var(--ease-out-strong) 60ms, transform 500ms var(--ease-out-strong) 60ms; pointer-events: auto; }
+}
+/* 64rem is Tailwind's built-in lg breakpoint. */
+@media (min-width: 64rem) {
+  .room-tile { flex: 1 1 0; }
+  .room-row:hover .room-tile, .room-row:focus-within .room-tile { flex-grow: 0.8; }
+  .room-row .room-tile:hover, .room-row .room-tile:focus-within { flex-grow: 2.2; }
+  .room-tile .room-more { opacity: 0; transform: translateY(8px); transition: opacity 300ms ease, transform 300ms var(--ease-out-strong); }
+  .room-tile:hover .room-more, .room-tile:focus-within .room-more { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The hero comes into focus once, then the brand word and the booking card arrive. */
+  .hero-photo { animation: hero-focus 1400ms var(--ease-out-strong) both; }
+  .hero-word { animation: hero-word 1200ms var(--ease-out-strong) 200ms both; }
+  .hero-card { animation: hero-card 700ms var(--ease-out-strong) 450ms both; }
+  .hero .rise { transition-delay: calc(350ms + var(--i, 0) * 80ms); }
+}
+@keyframes hero-focus { from { filter: blur(16px) brightness(0.6); transform: scale(1.1); } to { filter: none; transform: scale(1.02); } }
+@keyframes hero-word { from { opacity: 0; transform: translateY(14%) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes hero-card { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* While the hero scrolls away, the brand word drifts up behind the skyline. */
+    .hero-word { animation: hero-word 1200ms var(--ease-out-strong) 200ms both, hero-drift linear both; animation-timeline: auto, scroll(root); animation-range: normal, 0 100vh; }
+  }
+}
+@keyframes hero-drift { to { translate: 0 -30%; } }
+@media print {
+  .chapters.is-live { height: auto; }
+}

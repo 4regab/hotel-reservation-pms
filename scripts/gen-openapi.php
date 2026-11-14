@@ -81,7 +81,8 @@ function buildOpenApi(): string
         'GET /v1/reports/occupancy' => 'Occupancy, ADR, RevPAR and booking KPIs for a date range (from, to)',
         'GET /v1/reports/revenue' => 'Cash in and out by day and method, and payment matching timeliness',
         'GET /v1/reports/operations' => 'Median queue-to-key and checkout-to-ready times, rooms by status',
-        'POST /v1/mock/paymongo/pay' => 'Demo mode only: act as the payment provider and pay a checkout session',
+        'GET /v1/mock/paymongo/sessions/{id}' => 'Demo mode only: the pending checkout session shown on the test checkout page',
+        'POST /v1/mock/paymongo/sessions/{id}/attempts' => 'Demo mode only: try a PayMongo test card or a test e-wallet answer; the outcome is sent as a signed webhook',
     ];
     $q = fn (string $s): string => '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], $s) . '"';
     $items = [];

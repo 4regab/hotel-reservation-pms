@@ -117,4 +117,42 @@ $r = $rf->fetch();
 check((int) $r['n'] === 1 && $r['reason'] === 'LATE_AFTER_CANCEL', 'exactly one refund request, reason LATE_AFTER_CANCEL');
 check(status($rid5) === 'CANCELLED', 'the reservation stays CANCELLED');
 
+// ---- 6. the test checkout: 3-D Secure fail and approve, e-wallets, other declines. Each outcome travels as a signed webhook.
+$attempt = fn (string $acct, string $sid, array $b) => svcCall('billing', 'POST', '/internal/mock/paymongo/sessions/' . rawurlencode($sid) . '/attempts', 'guest', $acct, $b);
+$card = fn (string $n) => ['method' => 'card', 'cardNumber' => $n, 'cardExpiry' => '12/' . (int) date('y', strtotime('+3 years')), 'cardCvc' => '123', 'cardName' => 'Payments Tester'];
+$paidCount = admin('billing')->prepare("SELECT COUNT(*) FROM payment WHERE reservation_id = ? AND status = 'CAPTURED'");
+$paid = function (string $rid) use ($paidCount): int { $paidCount->execute([$rid]); return (int) $paidCount->fetchColumn(); };
+
+$acct6 = uuid();
+[$rid6, $sid6] = holdAndCheckout($acct6, $standard);
+[$s, $d] = $attempt($acct6, $sid6, $card('4120000000000007'));
+check($s === 200 && $d['outcome'] === '3ds' && $d['last4'] === '0007' && $d['threeDsToken'] !== '', '3-D Secure test card asks to authenticate');
+[$s, $d2] = $attempt($acct6, $sid6, ['method' => 'card', 'threeDsToken' => $d['threeDsToken'] . 'x', 'decision' => 'approve']);
+check($s === 422, 'a changed authentication ticket is refused');
+[$s, $d2] = $attempt($acct6, $sid6, ['method' => 'card', 'threeDsToken' => $d['threeDsToken'], 'decision' => 'fail']);
+check($s === 200 && $d2['outcome'] === 'failed' && $d2['reason'] === '3ds_failed' && $d2['result'] === 'ignored', 'failed authentication sends payment.failed and records nothing');
+check($paid($rid6) === 0 && status($rid6) === 'HELD', 'after a failed authentication there is no payment and the room is still held');
+[$s, $d3] = $attempt($acct6, $sid6, ['method' => 'card', 'threeDsToken' => $d['threeDsToken'], 'decision' => 'approve']);
+check($s === 200 && $d3['outcome'] === 'paid' && $d3['result'] === 'captured', 'approved authentication captures the payment');
+until(fn () => status($rid6) === 'CONFIRMED', '3-D Secure booking confirmed by the webhook');
+
+$acct8 = uuid();
+[$rid8, $sid8] = holdAndCheckout($acct8, $standard);
+foreach (['5100000000000198' => 'insufficient', '4200000000000018' => 'expired', '4300000000000017' => 'invalid_cvc', '4242424242424242' => 'not_test_card'] as $num => $why) {
+    [$s, $d] = $attempt($acct8, $sid8, $card((string) $num));
+    check($s === 200 && $d['outcome'] === 'failed' && $d['reason'] === $why, "card {$num}: declined ({$why})");
+}
+check($paid($rid8) === 0 && status($rid8) === 'HELD', 'declined cards leave no payment and the room still held');
+
+$acct7 = uuid();
+[$rid7, $sid7] = holdAndCheckout($acct7, $standard);
+[$s] = $attempt($acct7, $sid7, ['method' => 'gcash', 'phone' => '12345', 'decision' => 'authorize']);
+check($s === 422, 'e-wallet: a wrong mobile number is refused');
+[$s, $d] = $attempt($acct7, $sid7, ['method' => 'paymaya', 'phone' => '0917 123 4567', 'decision' => 'fail']);
+check($s === 200 && $d['outcome'] === 'failed' && $paid($rid7) === 0, 'Maya: failed test payment records nothing');
+[$s, $d] = $attempt($acct7, $sid7, ['method' => 'gcash', 'phone' => '+639171234567', 'decision' => 'authorize']);
+check($s === 200 && $d['outcome'] === 'paid' && $d['result'] === 'captured', 'GCash: authorized test payment is captured');
+until(fn () => status($rid7) === 'CONFIRMED', 'e-wallet booking confirmed by the webhook');
+check($paid($rid7) === 1, 'exactly one payment for the e-wallet booking');
+
 echo "payments passed ({$GLOBALS['passed']} checks)\n";

@@ -2,6 +2,99 @@
 (function () {
   'use strict';
 
+  // Landing page motion. The CSS only hides things when this class is present, so without JavaScript all content shows.
+  var calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!calm && 'IntersectionObserver' in window) {
+    document.documentElement.classList.add('js');
+
+    // Story words turn from grey to ink as the paragraph moves up the screen. Screen readers still get the plain sentence.
+    document.querySelectorAll('[data-words]').forEach(function (p) {
+      var text = p.textContent.trim();
+      p.textContent = '';
+      var plain = document.createElement('span');
+      plain.className = 'sr-only';
+      plain.textContent = text;
+      p.appendChild(plain);
+      var words = text.split(/\s+/).map(function (w, i) {
+        var s = document.createElement('span');
+        s.className = 'w';
+        s.setAttribute('aria-hidden', 'true');
+        s.textContent = (i ? ' ' : '') + w;
+        p.appendChild(s);
+        return s;
+      });
+      var ticking = false;
+      function paint() {
+        ticking = false;
+        var r = p.getBoundingClientRect();
+        var h = window.innerHeight;
+        var progress = Math.min(1, Math.max(0, (h * 0.85 - r.top) / (h * 0.55)));
+        var lit = Math.round(progress * words.length);
+        words.forEach(function (w, i) { w.classList.toggle('on', i < lit); });
+      }
+      window.addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(paint); } }, { passive: true });
+      paint();
+    });
+
+    // Stay chapters: the section is pinned while the page scrolls four screens. Each next photograph is
+    // uncovered from its foot over the last and settles from a slight zoom; the panel shows its chapter.
+    // Screens under 600px tall keep the plain row of cards.
+    document.querySelectorAll('[data-chapters]').forEach(function (root) {
+      if (window.innerHeight < 600) return;
+      var box = root.querySelector('.chapters-box');
+      var list = root.querySelector('.chapters-list');
+      var items = [].slice.call(root.querySelectorAll('.chapter'));
+      var pics = items.map(function (li) { return li.querySelector('.chapter-pic'); });
+      var n = items.length;
+      var stage = document.createElement('div');
+      stage.className = 'chapters-stage';
+      var panel = document.createElement('div');
+      panel.className = 'chapters-panel';
+      var count = document.createElement('p');
+      count.className = 'chapter-count';
+      count.setAttribute('aria-hidden', 'true');
+      panel.appendChild(count);
+      pics.forEach(function (p) { stage.appendChild(p); });
+      panel.appendChild(list);
+      stage.appendChild(panel);
+      box.appendChild(stage);
+      root.classList.add('is-live');
+      var on = -1;
+      var pad = function (v) { return (v < 10 ? '0' : '') + v; };
+      var ease = function (t) { return 1 - Math.pow(1 - t, 3); };
+      function draw() {
+        ticking2 = false;
+        var r = root.getBoundingClientRect();
+        var p = Math.min(1, Math.max(0, -r.top / Math.max(1, r.height - window.innerHeight)));
+        var seg = 1 / n, k = 0;
+        pics.forEach(function (pic, i) {
+          var u = i === 0 ? 1 : Math.min(1, Math.max(0, (p - (i - 0.25) * seg) / (0.45 * seg)));
+          var e = ease(u);
+          pic.style.setProperty('--c', ((1 - e) * 100).toFixed(2) + '%');
+          pic.style.setProperty('--z', (1.06 - 0.06 * e).toFixed(4));
+          if (u >= 0.5) k = i;
+        });
+        if (k !== on) {
+          on = k;
+          items.forEach(function (li, i) { li.classList.toggle('is-on', i === k); });
+          count.textContent = pad(k + 1) + ' / ' + pad(n);
+        }
+      }
+      var ticking2 = false;
+      window.addEventListener('scroll', function () { if (!ticking2) { ticking2 = true; requestAnimationFrame(draw); } }, { passive: true });
+      draw();
+    });
+  }
+
+  // Phone menu (a native <details>): Escape or a click outside closes it, and focus goes back to the menu button.
+  document.querySelectorAll('[data-menu]').forEach(function (menu) {
+    var btn = menu.querySelector('summary');
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && menu.open) { menu.open = false; btn.focus(); }
+    });
+    document.addEventListener('click', function (ev) { if (menu.open && !menu.contains(ev.target)) menu.open = false; });
+  });
+
   // Keep check-out after check-in in date pickers.
   document.querySelectorAll('[data-date-pair]').forEach(function (form) {
     var inEl = form.querySelector('[data-checkin]');
@@ -74,6 +167,81 @@
     var f = ev.target;
     var msg = f && f.getAttribute && f.getAttribute('data-confirm');
     if (msg && !window.confirm(msg)) ev.preventDefault();
+  });
+
+  // Test checkout: card number spacing, brand, expiry slash, and checks before sending. The server checks again.
+  document.querySelectorAll('[data-card-form]').forEach(function (form) {
+    var num = form.querySelector('[data-card-number]');
+    var exp = form.querySelector('[data-card-expiry]');
+    var brand = form.querySelector('[data-card-brand]');
+    function digits(v) { return v.replace(/\D+/g, ''); }
+    function luhn(n) {
+      var sum = 0;
+      for (var i = 0; i < n.length; i++) {
+        var d = +n[n.length - 1 - i];
+        if (i % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
+        sum += d;
+      }
+      return n.length >= 12 && sum % 10 === 0;
+    }
+    num.addEventListener('input', function () {
+      var n = digits(num.value).slice(0, 16);
+      num.value = n.replace(/(\d{4})(?=\d)/g, '$1 ');
+      brand.textContent = /^4/.test(n) ? 'Visa' : (/^(5[1-5]|2(2[2-9]|[3-6]\d|7[01]|720))/.test(n) ? 'Mastercard' : '');
+    });
+    exp.addEventListener('input', function () {
+      var n = digits(exp.value).slice(0, 4);
+      exp.value = n.length > 2 ? n.slice(0, 2) + '/' + n.slice(2) : n;
+    });
+    form.addEventListener('submit', function (ev) {
+      var problems = [];
+      var n = digits(num.value);
+      var listed = (form.getAttribute('data-test-cards') || '').split(',');
+      if (n.length !== 16 || (!luhn(n) && listed.indexOf(n) < 0)) problems.push([num, 'Enter a valid 16-digit card number.']);
+      var m = /^(\d{2})\/(\d{2})$/.exec(exp.value);
+      var now = new Date();
+      if (!m || +m[1] < 1 || +m[1] > 12) problems.push([exp, 'Enter the expiry date as MM/YY.']);
+      else if (new Date(2000 + +m[2], +m[1], 0, 23, 59) < now) problems.push([exp, 'This expiry date is in the past.']);
+      var cvc = form.querySelector('[name=cardCvc]');
+      if (!/^\d{3}$/.test(cvc.value.trim())) problems.push([cvc, 'Enter the 3-digit security code from the back of the card.']);
+      var name = form.querySelector('[name=cardName]');
+      if (!name.value.trim()) problems.push([name, 'Enter the name on the card.']);
+      form.querySelectorAll('[data-client-error]').forEach(function (p) { p.remove(); });
+      form.querySelectorAll('[aria-invalid]').forEach(function (i) { i.removeAttribute('aria-invalid'); });
+      if (!problems.length) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      problems.forEach(function (pr) {
+        var p = document.createElement('p');
+        p.className = 'mt-1.5 text-sm font-medium text-red-800';
+        p.id = 'ce-' + pr[0].id;
+        p.setAttribute('data-client-error', '');
+        p.textContent = pr[1];
+        (pr[0].closest('.relative') || pr[0]).insertAdjacentElement('afterend', p);
+        pr[0].setAttribute('aria-invalid', 'true');
+        pr[0].setAttribute('aria-describedby', p.id);
+      });
+      problems[0][0].focus();
+    }, true);
+  });
+
+  // Test checkout: show a short "processing" state before the payment is sent, like a hosted checkout does.
+  document.querySelectorAll('form[data-processing]').forEach(function (form) {
+    var panel = document.querySelector('[data-processing-panel]');
+    form.addEventListener('submit', function (ev) {
+      if (form.dataset.sending || !panel) return;
+      ev.preventDefault();
+      form.dataset.sending = '1';
+      var btn = ev.submitter;
+      if (btn && btn.name) {
+        var keep = document.createElement('input');
+        keep.type = 'hidden'; keep.name = btn.name; keep.value = btn.value;
+        form.appendChild(keep);
+      }
+      panel.classList.remove('hidden');
+      panel.classList.add('flex');
+      setTimeout(function () { form.submit(); }, 1200);
+    });
   });
 
   document.querySelectorAll('[data-print]').forEach(function (b) {

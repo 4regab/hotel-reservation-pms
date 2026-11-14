@@ -9,18 +9,18 @@ $kpi = function (string $name, string $value, string $target, ?bool $ok, string 
 <?php }; ?>
 <div class="container-page max-w-6xl pb-4 pt-8 sm:pt-10">
   <div class="flex flex-wrap items-end justify-between gap-3">
-    <div><h1 class="page-title">Reports</h1><p class="mt-1 text-ink-600">Read live from the booking, billing and room systems when you open this page. Generated <?= e(dt(gmdate('Y-m-d H:i:s'))) ?>. Never used to sell rooms.</p></div>
+    <div><h1 class="page-title">Reports</h1><p class="mt-1 text-sm text-ink-600">Read live from the booking, billing and room systems when you open this page. Generated <?= e(dt(gmdate('Y-m-d H:i:s'))) ?>. Never used to sell rooms.</p></div>
     <form method="get" action="/staff/reports" class="flex flex-wrap items-end gap-3"><?= field('From', 'from', 'date', $from) ?><?= field('To', 'to', 'date', $to) ?><button class="btn btn-secondary">Update</button></form>
   </div>
   <?php if ($unavailable) { ?><p class="alert alert-warn mt-4" role="alert">Some figures are missing because these systems did not answer: <?= e(implode(', ', $unavailable)) ?>.</p><?php } ?>
 
   <?php if ($occ) { $t = $occ['totals']; ?>
-    <ul class="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-5" aria-label="Key figures">
-      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-ink-600">Occupancy</p><p class="mt-1 font-display text-3xl font-medium tracking-tight text-ink-950"><?= e($pct($t['occupancy'])) ?></p><p class="text-xs text-ink-600"><?= e($t['roomNights']) ?> of <?= e($t['roomNightsAvailable']) ?> room-nights</p></li>
-      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-ink-600">ADR</p><p class="mt-1 font-display text-2xl font-medium tracking-tight text-ink-950 sm:text-3xl"><?= e(php_money($t['adrMinor'])) ?></p><p class="text-xs text-ink-600">average daily rate</p></li>
-      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-ink-600">RevPAR</p><p class="mt-1 font-display text-2xl font-medium tracking-tight text-ink-950 sm:text-3xl"><?= e(php_money($t['revparMinor'])) ?></p><p class="text-xs text-ink-600">revenue per available room</p></li>
-      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-ink-600">Room revenue</p><p class="mt-1 font-display text-2xl font-medium tracking-tight text-ink-950 sm:text-3xl"><?= e($php0((float) $t['revenueMinor'])) ?></p><p class="text-xs text-ink-600">booked nights in range</p></li>
-      <li class="card card-pad col-span-2 lg:col-span-1 2xl:col-span-1"><p class="text-xs font-semibold uppercase text-ink-600">Cash collected</p><p class="mt-1 font-display text-2xl font-medium tracking-tight text-ink-950 sm:text-3xl"><?= $rev ? e($php0((float) $rev['totals']['netMinor'])) : '-' ?></p><p class="text-xs text-ink-600">payments minus refunds<?= $rev ? ', to ' . e(d($rev['to'])) : '' ?></p></li>
+    <ul class="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-ink-200 bg-ink-200 lg:grid-cols-5" aria-label="Key figures">
+      <li class="bg-white p-4 sm:p-5"><p class="kpi-label">Occupancy</p><p class="kpi-value text-xl 2xl:text-2xl"><?= e($pct($t['occupancy'])) ?></p><p class="kpi-note"><?= e($t['roomNights']) ?> of <?= e($t['roomNightsAvailable']) ?> room-nights</p></li>
+      <li class="bg-white p-4 sm:p-5"><p class="kpi-label">ADR</p><p class="kpi-value text-xl 2xl:text-2xl"><?= e(php_money($t['adrMinor'])) ?></p><p class="kpi-note">average daily rate</p></li>
+      <li class="bg-white p-4 sm:p-5"><p class="kpi-label">RevPAR</p><p class="kpi-value text-xl 2xl:text-2xl"><?= e(php_money($t['revparMinor'])) ?></p><p class="kpi-note">revenue per available room</p></li>
+      <li class="bg-white p-4 sm:p-5"><p class="kpi-label">Room revenue</p><p class="kpi-value text-xl 2xl:text-2xl"><?= e($php0((float) $t['revenueMinor'])) ?></p><p class="kpi-note">booked nights in range</p></li>
+      <li class="col-span-2 bg-white p-4 sm:p-5 lg:col-span-1"><p class="kpi-label">Cash collected</p><p class="kpi-value text-xl 2xl:text-2xl"><?= $rev ? e($php0((float) $rev['totals']['netMinor'])) : '-' ?></p><p class="kpi-note">payments minus refunds<?= $rev ? ', to ' . e(d($rev['to'])) : '' ?></p></li>
     </ul>
 
     <?php
@@ -28,23 +28,23 @@ $kpi = function (string $name, string $value, string $target, ?bool $ok, string 
       $revBars = array_map(fn ($x) => ['label' => $x['date'], 'value' => $x['revenueMinor'], 'muted' => $x['date'] > $today], $occ['days']);
     ?>
     <section class="card card-pad mt-6" aria-labelledby="oc-h"><h2 id="oc-h" class="text-lg font-semibold">Occupancy by night</h2><p class="text-sm text-ink-600">Light bars are nights still to come (booked so far).</p>
-      <div class="mt-3"><?= Charts::bars('Occupancy by night', 'Share of rooms sold each night from ' . $occ['from'] . ' to ' . $occ['to'], $occBars, $pct, 1.0) ?></div>
-      <details class="mt-3"><summary class="link cursor-pointer text-sm">Show as a table</summary><div class="table-wrap mt-2 max-h-72 overflow-y-auto"><table class="table"><thead><tr><th scope="col">Night</th><th scope="col">Rooms sold</th><th scope="col">Occupancy</th><th scope="col">ADR</th><th scope="col">Revenue</th></tr></thead><tbody>
-        <?php foreach ($occ['days'] as $x) { ?><tr><td><?= e(d($x['date'])) ?></td><td><?= e($x['roomsSold']) ?> of <?= e($x['roomsAvailable']) ?></td><td><?= e($pct($x['occupancy'])) ?></td><td><?= e(php_money($x['adrMinor'])) ?></td><td><?= e(php_money($x['revenueMinor'])) ?></td></tr><?php } ?></tbody></table></div></details>
+      <div class="mt-3 overflow-x-auto"><div class="min-w-[36rem]"><?= Charts::bars('Occupancy by night', 'Share of rooms sold each night from ' . $occ['from'] . ' to ' . $occ['to'], $occBars, $pct, 1.0) ?></div></div>
+      <details class="mt-3"><summary class="inline-flex min-h-11 cursor-pointer items-center text-sm font-medium text-ink-900 underline decoration-clay-500 decoration-2 underline-offset-4">Show as a table</summary><div class="table-wrap mt-2 max-h-72 overflow-y-auto"><table class="table"><thead><tr><th scope="col">Night</th><th scope="col">Rooms sold</th><th scope="col">Occupancy</th><th scope="col">ADR</th><th scope="col">Revenue</th></tr></thead><tbody>
+        <?php foreach ($occ['days'] as $x) { ?><tr><td><?= e(d($x['date'])) ?></td><td><?= e($x['roomsSold']) ?> of <?= e($x['roomsAvailable']) ?></td><td><?= e($pct($x['occupancy'])) ?></td><td class="whitespace-nowrap"><?= e(php_money($x['adrMinor'])) ?></td><td class="whitespace-nowrap"><?= e(php_money($x['revenueMinor'])) ?></td></tr><?php } ?></tbody></table></div></details>
     </section>
-    <div class="mt-6 grid gap-6">
-      <section class="card card-pad" aria-labelledby="rv-h"><h2 id="rv-h" class="text-lg font-semibold">Room revenue by night</h2><div class="mt-3"><?= Charts::bars('Room revenue by night', 'Revenue from booked room-nights each night', $revBars, $php0, null, '#b35f05', '#fbc37f') ?></div></section>
+    <div class="mt-6 grid gap-6 [&>*]:min-w-0">
+      <section class="card card-pad" aria-labelledby="rv-h"><h2 id="rv-h" class="text-lg font-semibold">Room revenue by night</h2><div class="mt-3 overflow-x-auto"><div class="min-w-[36rem]"><?= Charts::bars('Room revenue by night', 'Revenue from booked room-nights each night', $revBars, $php0, null, '#b35f05', '#fbc37f') ?></div></div></section>
       <section class="card card-pad" aria-labelledby="ty-h"><h2 id="ty-h" class="text-lg font-semibold">By room type</h2>
-        <div class="mt-3"><?= Charts::hbars('Room-nights by room type', 'Room-nights sold per room type in the range', array_map(fn ($x) => ['label' => $x['name'], 'value' => $x['roomNights']], $occ['byRoomType']), $whole) ?></div>
+        <div class="mt-3 overflow-x-auto"><div class="min-w-[36rem]"><?= Charts::hbars('Room-nights by room type', 'Room-nights sold per room type in the range', array_map(fn ($x) => ['label' => $x['name'], 'value' => $x['roomNights']], $occ['byRoomType']), $whole) ?></div></div>
         <h3 class="mt-5 text-sm font-semibold">Bookings made in range, by channel</h3>
-        <div class="mt-2"><?= Charts::hbars('Bookings by channel', 'Confirmed bookings by where they came from', array_map(fn ($k, $v) => ['label' => badge_for((string) $k)[1], 'value' => $v], array_keys($occ['bookings']['bySource']), array_values($occ['bookings']['bySource'])), $whole, '#2f4d74') ?></div>
+        <div class="mt-2 overflow-x-auto"><div class="min-w-[36rem]"><?= Charts::hbars('Bookings by channel', 'Confirmed bookings by where they came from', array_map(fn ($k, $v) => ['label' => badge_for((string) $k)[1], 'value' => $v], array_keys($occ['bookings']['bySource']), array_values($occ['bookings']['bySource'])), $whole, '#2f4d74') ?></div></div>
       </section>
     </div>
   <?php } ?>
 
   <?php if ($rev) { ?>
     <section class="card card-pad mt-6" aria-labelledby="cash-h"><h2 id="cash-h" class="text-lg font-semibold">Cash in and out by day</h2>
-      <div class="mt-3"><?= Charts::bars('Net cash by day', 'Payments minus refunds each day', array_map(fn ($x) => ['label' => $x['date'], 'value' => max(0, $x['netMinor'])], $rev['days']), $php0, null, '#1f2b4d') ?></div>
+      <div class="mt-3 overflow-x-auto"><div class="min-w-[36rem]"><?= Charts::bars('Net cash by day', 'Payments minus refunds each day', array_map(fn ($x) => ['label' => $x['date'], 'value' => max(0, $x['netMinor'])], $rev['days']), $php0, null, '#1f2b4d') ?></div></div>
       <p class="mt-2 text-sm text-ink-700">Payments <strong><?= e(php_money($rev['totals']['paymentsMinor'])) ?></strong>, refunds <strong><?= e(php_money($rev['totals']['refundsMinor'])) ?></strong>.
         <?php foreach ($rev['byMethod'] as $m) { ?><span class="badge badge-slate"><?= e($m['method']) ?> <?= e(php_money($m['amountMinor'])) ?></span> <?php } ?></p>
     </section>

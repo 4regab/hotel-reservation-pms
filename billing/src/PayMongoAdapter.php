@@ -128,14 +128,27 @@ final class PayMongoAdapter
         return $out;
     }
 
-    /** Build the "paid" event PayMongo would send (mock mode only). */
-    public static function mockPaidEvent(string $sessionId, string $reservationId, int $amountMinor, string $currency): array
+    /** Build the "paid" event PayMongo would send (mock mode only). Only the method and the last four card digits are included. */
+    public static function mockPaidEvent(string $sessionId, string $reservationId, int $amountMinor, string $currency, string $method = 'card', string $last4 = ''): array
     {
+        $source = ['type' => $method] + ($last4 !== '' ? ['last4' => $last4] : []);
         return ['data' => ['id' => 'evt_mock_' . Uuid::v4(), 'type' => 'event', 'attributes' => [
             'type' => 'checkout_session.payment.paid',
             'data' => ['id' => $sessionId, 'type' => 'checkout_session', 'attributes' => [
                 'metadata' => ['reservationId' => $reservationId],
-                'payments' => [['id' => 'pay_mock_' . bin2hex(random_bytes(8)), 'attributes' => ['amount' => $amountMinor, 'currency' => $currency, 'status' => 'paid']]],
+                'payments' => [['id' => 'pay_mock_' . bin2hex(random_bytes(8)), 'attributes' => ['amount' => $amountMinor, 'currency' => $currency, 'status' => 'paid', 'source' => $source]]],
+            ]],
+        ]]];
+    }
+
+    /** Build the "payment.failed" event PayMongo would send (mock mode only). Billing acknowledges it and records nothing. */
+    public static function mockFailedEvent(string $sessionId, string $reservationId, int $amountMinor, string $currency, string $method, string $reason): array
+    {
+        return ['data' => ['id' => 'evt_mock_' . Uuid::v4(), 'type' => 'event', 'attributes' => [
+            'type' => 'payment.failed',
+            'data' => ['id' => 'pay_mock_' . bin2hex(random_bytes(8)), 'type' => 'payment', 'attributes' => [
+                'amount' => $amountMinor, 'currency' => $currency, 'status' => 'failed', 'source' => ['type' => $method],
+                'last_payment_error' => ['code' => $reason], 'metadata' => ['reservationId' => $reservationId, 'checkoutSessionId' => $sessionId],
             ]],
         ]]];
     }

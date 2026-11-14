@@ -31,8 +31,18 @@ check(strtotime($hold['holdExpiresAt']) - time() > 540, 'hold lasts about 10 min
 
 [$s, $co1] = $guest->post("/v1/reservations/{$rid}/checkout", [], 'k-' . uuid());
 check($s === 201 && str_contains($co1['checkoutUrl'], '/mock/paymongo/checkout/'), 'checkout session created');
-[$s, $pay] = $guest->post('/v1/mock/paymongo/pay', ['sessionId' => $co1['sessionId']]);
-check($s === 200 && $pay['result'] === 'captured', 'mock provider webhook captured the payment');
+$attempts = '/v1/mock/paymongo/sessions/' . rawurlencode($co1['sessionId']) . '/attempts';
+[$s, $sess] = $guest->get('/v1/mock/paymongo/sessions/' . rawurlencode($co1['sessionId']));
+check($s === 200 && $sess['reservationId'] === $rid && $sess['amountMinor'] === $hold['amountMinor'], 'test checkout shows the saved amount');
+$card = fn (string $n) => ['method' => 'card', 'cardNumber' => $n, 'cardExpiry' => '12/' . (int) date('y', strtotime('+3 years')), 'cardCvc' => '123', 'cardName' => 'Journey Tester'];
+[$s, $bad] = $guest->post($attempts, ['cardExpiry' => '13/99', 'cardCvc' => '1', 'cardName' => ''] + $card('4343434343434346'));
+check($s === 422 && isset($bad['error']['fields']['cardNumber'], $bad['error']['fields']['cardExpiry'], $bad['error']['fields']['cardCvc'], $bad['error']['fields']['cardName']), 'card form errors are checked on the server');
+[$s, $declined] = $guest->post($attempts, $card('4111 1111 1111 1111'));
+check($s === 200 && $declined['outcome'] === 'failed' && $declined['reason'] === 'declined' && $declined['result'] === 'ignored', 'declined test card: failed event sent and ignored');
+check(($guest->get("/v1/reservations/{$rid}")[1]['status'] ?? '') === 'HELD', 'after a declined card the room is still held');
+[$s, $pay] = $guest->post($attempts, $card('4343 4343 4343 4345'));
+check($s === 200 && $pay['outcome'] === 'paid' && $pay['last4'] === '4345' && $pay['result'] === 'captured', 'success test card: signed paid event captured the payment');
+check(!str_contains(json_encode($pay), '4343434343434345'), 'the full card number is never sent back');
 
 until(fn () => ($guest->get("/v1/reservations/{$rid}")[1]['status'] ?? '') === 'CONFIRMED', 'reservation CONFIRMED');
 check(true, 'reservation confirmed only after verified payment event');

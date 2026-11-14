@@ -57,7 +57,13 @@ The token names `ink` (navy) and `clay` (tangerine) are kept from the first draf
 
 **Shadows**: `--shadow-soft` (cards), `--shadow-float` (search bar, menus, popovers). Nothing else.
 
-**Motion**: transform and opacity only, under 300 ms for feedback, one-time reveals on scroll. All motion is off when the visitor asks for reduced motion.
+**Motion**: transform, opacity and clip only. Hover and press feedback is 150 to 300 ms (cards lift 2 px, photos zoom 3%). There are no fade-ins on every section.
+The landing page has three scroll moments, each in its own section:
+- The hero comes into focus once on load, and the "MA HOTEL" word behind the skyline drifts up as the hero scrolls away.
+- The story statement turns from grey (`ink-500`, still readable at 4.8:1) to ink word by word as it crosses the screen.
+- "Your stay, from booking to breakfast" is pinned for four screens of scroll. Each next photograph is uncovered from its foot over the last, and a white panel shows its step. Screens under 600 px tall, and visitors who ask for reduced motion, get four plain photo cards instead.
+
+All motion is off when the visitor asks for reduced motion, and every word is in the HTML without script.
 
 ## 3. Components (in `@layer components`)
 
@@ -74,6 +80,10 @@ New:
 - `stat` (big number + label, used on the landing page, the staff dashboard and reports).
 - `empty` (empty state: icon, one line, one action).
 - `staff-shell` pieces: `staff-nav` (sidebar on `xl`, top scroller below), `staff-main`.
+- `tabs` and `tab`: a segmented row (grey track, the current tab white). Used by the front desk, finance and privacy queue lists.
+- `kpi-label`, `kpi-value`, `kpi-note`: staff figures (dashboard cards, report figures).
+
+**Staff workspace rules** (`.staff` on `<body>`): a fixed white sidebar on `xl` with an outline icon per area, the signed-in person and Sign out at its foot; a cool grey page (`ink-50`); sans-serif page titles at 24 px; navy main buttons (tangerine is kept for the guest site); controls 44 px tall on touch screens and 36 px on a desktop with a mouse; flat cards and tables with hairline borders, 11 px table headings, dates with an arrow (`15 Nov → 17 Nov`).
 
 ## 4. Logo
 

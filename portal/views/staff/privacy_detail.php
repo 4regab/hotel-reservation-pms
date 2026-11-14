@@ -2,7 +2,7 @@
 $open = in_array($q['status'], ['OPEN', 'IN_REVIEW'], true);
 $what = ['ACCESS' => 'Send the person a file with their account, bookings and emails.', 'CORRECTION' => 'Apply the corrected details to the account and the guest record.', 'DELETION' => 'Remove the name and contacts from the account and the guest record. Stay and payment facts stay for finance. Refused while a booking is still live.'][$q['type']]; ?>
 <div class="container-page max-w-3xl pb-4 pt-8 sm:pt-10">
-  <nav aria-label="Breadcrumb" class="text-sm text-ink-600"><a class="link" href="/staff/admin/privacy">Privacy requests</a> <span aria-hidden="true">/</span> <?= e(ucfirst(strtolower($q['type']))) ?></nav>
+  <nav aria-label="Breadcrumb" class="flex items-center text-sm text-ink-600"><a class="link inline-flex min-h-11 items-center" href="/staff/admin/privacy">Privacy requests</a> <span aria-hidden="true">/</span> <?= e(ucfirst(strtolower($q['type']))) ?></nav>
   <h1 class="page-title mt-2"><?= e(ucfirst(strtolower($q['type']))) ?> request <?= badge($q['status']) ?></h1>
   <dl class="card card-pad mt-6 grid gap-4 text-sm sm:grid-cols-2">
     <div><dt class="text-ink-600">Person</dt><dd class="font-medium"><?= e($q['full_name']) ?></dd></div>

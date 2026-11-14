@@ -1,6 +1,6 @@
 <?php /** @var array $t */ ?>
 <div class="container-page pb-4 pt-6 sm:pt-10">
-  <nav aria-label="Breadcrumb" class="text-sm text-ink-600"><a class="link" href="/rooms">Rooms</a> <span aria-hidden="true" class="mx-1">/</span> <?= e($t['name']) ?></nav>
+  <nav aria-label="Breadcrumb" class="flex items-center text-sm text-ink-600"><a class="link inline-flex min-h-11 items-center" href="/rooms">Rooms</a> <span aria-hidden="true" class="mx-1">/</span> <?= e($t['name']) ?></nav>
   <div class="mt-4 flex flex-wrap items-end justify-between gap-4">
     <div>
       <h1 class="page-title"><?= e($t['name']) ?></h1>
