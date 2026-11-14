@@ -42,14 +42,14 @@ final class MaintenanceCoordinator
 
         // Step 1: save the request (safe to repeat: same requestId finds the same row).
         $block = Tx::run($this->pdo, function () use ($requestId, $roomId, $start, $end, $reason, $user, $ip): array {
-            $existing = $this->one('SELECT block_id, status FROM maintenance_block WHERE request_id = ? FOR UPDATE', [$requestId]);
+            $existing = $this->one('SELECT block_id, status FROM maintenance_block WITH (UPDLOCK, HOLDLOCK) WHERE request_id = ?', [$requestId]);
             if ($existing !== null) {
                 return $existing;
             }
             $overlap = $this->overlap($roomId, $start, $end);
             $id = Uuid::v4();
             $status = $overlap ? 'CONFLICT' : 'PENDING';
-            $this->pdo->prepare('INSERT INTO maintenance_block (block_id, room_id, start_date, end_date, status, reason, request_id, requested_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())')
+            $this->pdo->prepare('INSERT INTO maintenance_block (block_id, room_id, start_date, end_date, status, reason, request_id, requested_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))')
                 ->execute([$id, $roomId, $start, $end, $status, $reason, $requestId, $user['accountId']]);
             Audit::record($this->pdo, $user, 'maintenance.requested', 'room', $roomId, ['blockId' => $id, 'status' => $status, 'start' => $start, 'end' => $end], $ip);
             return ['block_id' => $id, 'status' => $status];
@@ -78,7 +78,7 @@ final class MaintenanceCoordinator
     public function reject(array $user, string $blockId, string $note, ?string $ip): array
     {
         $note = mb_substr(trim($note), 0, 200);
-        $st = $this->pdo->prepare("UPDATE maintenance_block SET status = 'REJECTED', decided_by = ?, decided_at = UTC_TIMESTAMP(), decision_note = ? WHERE block_id = ? AND status IN ('CONFLICT','PENDING')");
+        $st = $this->pdo->prepare("UPDATE maintenance_block SET status = 'REJECTED', decided_by = ?, decided_at = DATETRUNC(SECOND, SYSUTCDATETIME()), decision_note = ? WHERE block_id = ? AND status IN ('CONFLICT','PENDING')");
         $st->execute([$user['accountId'], $note !== '' ? $note : null, $blockId]);
         if ($st->rowCount() === 0) {
             throw new ApiException(409, 'ILLEGAL_TRANSITION', 'Only a pending or conflicted block can be rejected');
@@ -91,8 +91,8 @@ final class MaintenanceCoordinator
     {
         $where = in_array($status, ['PENDING', 'APPROVED', 'CONFLICT', 'REJECTED'], true) ? 'WHERE b.status = ' . $this->pdo->quote($status) : '';
         return [200, ['blocks' => $this->pdo->query(
-            "SELECT b.block_id AS blockId, b.room_id AS roomId, r.room_number AS roomNumber, b.start_date AS startDate, b.end_date AS endDate, b.status, b.reason, b.requested_by AS requestedBy, b.created_at AS createdAt, b.decision_note AS decisionNote
-               FROM maintenance_block b JOIN room r ON r.room_id = b.room_id {$where} ORDER BY b.created_at DESC LIMIT 100"
+            "SELECT TOP (100) b.block_id AS blockId, b.room_id AS roomId, r.room_number AS roomNumber, b.start_date AS startDate, b.end_date AS endDate, b.status, b.reason, b.requested_by AS requestedBy, b.created_at AS createdAt, b.decision_note AS decisionNote
+               FROM maintenance_block b JOIN room r ON r.room_id = b.room_id {$where} ORDER BY b.created_at DESC"
         )->fetchAll()]];
     }
 
@@ -123,7 +123,7 @@ final class MaintenanceCoordinator
 
         // Step 3: activate the local block, take the room out of service if the block covers today, queue the event.
         Tx::run($this->pdo, function () use ($block, $requestId, $room, $start, $end, $user, $ip): void {
-            $this->pdo->prepare("UPDATE maintenance_block SET status = 'APPROVED', decided_by = COALESCE(decided_by, ?), decided_at = COALESCE(decided_at, UTC_TIMESTAMP()) WHERE block_id = ?")->execute([$user['accountId'], $block['block_id']]);
+            $this->pdo->prepare("UPDATE maintenance_block SET status = 'APPROVED', decided_by = COALESCE(decided_by, ?), decided_at = COALESCE(decided_at, DATETRUNC(SECOND, SYSUTCDATETIME())) WHERE block_id = ?")->execute([$user['accountId'], $block['block_id']]);
             $today = Dates::manilaToday();
             if ($start <= $today && $today < $end) {
                 $this->pdo->prepare("UPDATE room SET readiness = 'OUT_OF_SERVICE', version = version + 1 WHERE room_id = ? AND readiness IN ('READY','DIRTY')")->execute([$room['room_id']]);
@@ -136,7 +136,7 @@ final class MaintenanceCoordinator
 
     private function overlap(string $roomId, string $start, string $end): bool
     {
-        return $this->one('SELECT 1 AS x FROM room_assignment WHERE room_id = ? AND active = 1 AND start_date < ? AND end_date > ? LIMIT 1', [$roomId, $end, $start]) !== null;
+        return $this->one('SELECT TOP (1) 1 AS x FROM room_assignment WHERE room_id = ? AND active = 1 AND start_date < ? AND end_date > ?', [$roomId, $end, $start]) !== null;
     }
 
     private function one(string $sql, array $args): ?array

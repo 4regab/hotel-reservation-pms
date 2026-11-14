@@ -72,10 +72,10 @@ final class StayCoordinator
             }
             $stayId = Uuid::v4();
             try {
-                $this->pdo->prepare('INSERT INTO stay (stay_id, reservation_id, check_in, check_out, actual_check_in, identity_verified_by, identity_doc_type, queue_started_at, override_by, override_reason) VALUES (?, ?, ?, ?, UTC_TIMESTAMP(), ?, ?, ?, ?, ?)')
+                $this->pdo->prepare('INSERT INTO stay (stay_id, reservation_id, check_in, check_out, actual_check_in, identity_verified_by, identity_doc_type, queue_started_at, override_by, override_reason) VALUES (?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()), ?, ?, ?, ?, ?)')
                     ->execute([$stayId, $rid, $res['checkIn'], $res['checkOut'], $user['accountId'], $doc, $queueStart, $override === null ? null : $override['by'], $override['reason'] ?? null]);
             } catch (\PDOException $e) {
-                if (($e->errorInfo[1] ?? 0) === 1062) {
+                if (\Lib\Db::isDuplicateKey($e)) {
                     throw new ApiException(409, 'ALREADY_CHECKED_IN', 'This reservation already has a stay');
                 }
                 throw $e;
@@ -112,17 +112,17 @@ final class StayCoordinator
         }
 
         return Tx::run($this->pdo, function () use ($rid, $user, $ip): array {
-            $s = $this->one('SELECT stay_id, actual_check_out FROM stay WHERE reservation_id = ? FOR UPDATE', [$rid]);
+            $s = $this->one('SELECT stay_id, actual_check_out FROM stay WITH (UPDLOCK, ROWLOCK) WHERE reservation_id = ?', [$rid]);
             if ($s === null || $s['actual_check_out'] !== null) {
                 throw new ApiException(409, 'ALREADY_CHECKED_OUT');
             }
             $st = $this->pdo->prepare('SELECT room_id FROM room_assignment WHERE stay_id = ? AND active = 1 ORDER BY room_id');
             $st->execute([$s['stay_id']]);
             $roomIds = $st->fetchAll(\PDO::FETCH_COLUMN);
-            $this->pdo->prepare('UPDATE stay SET actual_check_out = UTC_TIMESTAMP() WHERE stay_id = ?')->execute([$s['stay_id']]);
+            $this->pdo->prepare('UPDATE stay SET actual_check_out = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE stay_id = ?')->execute([$s['stay_id']]);
             $this->pdo->prepare('UPDATE room_assignment SET active = 0 WHERE stay_id = ?')->execute([$s['stay_id']]);
             $dirty = $this->pdo->prepare("UPDATE room SET readiness = 'DIRTY', version = version + 1 WHERE room_id = ?");
-            $task = $this->pdo->prepare("INSERT INTO cleaning_task (task_id, room_id, assignee, status, created_at) VALUES (?, ?, NULL, 'OPEN', UTC_TIMESTAMP())");
+            $task = $this->pdo->prepare("INSERT INTO cleaning_task (task_id, room_id, assignee, status, created_at) VALUES (?, ?, NULL, 'OPEN', DATETRUNC(SECOND, SYSUTCDATETIME()))");
             foreach ($roomIds as $roomId) {
                 $dirty->execute([$roomId]);
                 $task->execute([Uuid::v4(), $roomId]);
@@ -171,10 +171,10 @@ final class StayCoordinator
     private function pickReadyRooms(string $roomTypeId, int $qty, string $checkIn, string $checkOut): array
     {
         $st = $this->pdo->prepare(
-            "SELECT r.room_id FROM room r
+            "SELECT TOP ({$qty}) r.room_id FROM room r WITH (UPDLOCK, ROWLOCK)
               WHERE r.room_type_id = ? AND r.readiness = 'READY'
                 AND NOT EXISTS (SELECT 1 FROM room_assignment a WHERE a.room_id = r.room_id AND a.active = 1 AND a.start_date < ? AND a.end_date > ?)
-              ORDER BY r.room_number LIMIT " . $qty . ' FOR UPDATE'
+              ORDER BY r.room_number"
         );
         $st->execute([$roomTypeId, $checkOut, $checkIn]);
         $ids = $st->fetchAll(\PDO::FETCH_COLUMN);
@@ -186,12 +186,12 @@ final class StayCoordinator
 
     private function lockRoom(string $roomId): array
     {
-        return $this->one('SELECT room_id, room_type_id, room_number, readiness FROM room WHERE room_id = ? FOR UPDATE', [$roomId]) ?? throw new ApiException(404, 'ROOM_NOT_FOUND');
+        return $this->one('SELECT room_id, room_type_id, room_number, readiness FROM room WITH (UPDLOCK, ROWLOCK) WHERE room_id = ?', [$roomId]) ?? throw new ApiException(404, 'ROOM_NOT_FOUND');
     }
 
     private function hasOverlap(string $roomId, string $start, string $end): bool
     {
-        return $this->one('SELECT 1 AS x FROM room_assignment WHERE room_id = ? AND active = 1 AND start_date < ? AND end_date > ? LIMIT 1', [$roomId, $end, $start]) !== null;
+        return $this->one('SELECT TOP (1) 1 AS x FROM room_assignment WHERE room_id = ? AND active = 1 AND start_date < ? AND end_date > ?', [$roomId, $end, $start]) !== null;
     }
 
     private function one(string $sql, array $args): ?array
