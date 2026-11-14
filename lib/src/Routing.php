@@ -16,7 +16,6 @@ final class Routing
         'StayCheckedIn'            => ['booking', 'billing', 'portal'],
         'StayCheckedOut'           => ['booking', 'billing', 'portal'],
         'MaintenanceBlockApproved' => ['portal'],
-        'RefundRejected'           => ['portal'],
     ];
 
     /** @return list<string> */

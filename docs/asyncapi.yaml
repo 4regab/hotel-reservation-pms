@@ -1,52 +1,149 @@
 asyncapi: 2.6.0
 info:
-  title: HarborLight Hotels - Reservation Confirmation Event
-  version: 1.0.0
+  title: HarborLight Hotels - Service Events
+  version: 2.0.0
   description: |
-    Booking saves the confirmation and its event in ONE local transaction (transactional outbox).
-    A scheduled dispatcher delivers the event over authenticated HTTPS (POST /internal/events).
-    Consumers write the eventId to their inbox in the same transaction as their own update, so
-    a retry is applied once. A 2xx answer means "committed". Guest contact details are never in events.
+    Every service saves a change and its event in ONE local transaction (transactional outbox). A scheduled dispatcher delivers each event
+    to every subscriber over the private network (POST /internal/events) with that pair's service credential. A subscriber writes the eventId
+    to its inbox in the same transaction as its own update, so a retry is applied once. A 2xx answer means "committed". After 5 failed
+    attempts a delivery is flagged for review and never deleted (see System health in the staff area).
+    Guest contact details and card data are never in events: a service that needs them asks the owner over REST when it needs them.
+    Subscribers are taken from lib/src/Routing.php; a logic check keeps this file in step with it.
 defaultContentType: application/json
 servers:
-  booking:
-    url: http://booking:8000
-    protocol: http
-    description: Private network. Callers send a scoped bearer credential and X-Service-Caller.
+  booking: { url: 'http://booking:8000', protocol: http, description: Private network only. }
+  roomops: { url: 'http://roomops:8000', protocol: http, description: Private network only. }
+  billing: { url: 'http://billing:8000', protocol: http, description: Private network only. }
+  portal: { url: 'http://portal:8000', protocol: http, description: Private network only. }
 channels:
-  hotel.reservations.v1:
-    description: Logical outbox channel. Delivered to POST /internal/events of each consumer.
+  hotel.ReservationConfirmed.v1:
+    description: A booking became CONFIRMED (verified payment, manager-approved guarantee, or a partner import).
     subscribe:
       operationId: onReservationConfirmed
-      summary: Booking publishes. Room Operations (arrivals) and the portal (email, reporting) consume.
+      summary: 'Published by booking. Consumed by roomops, portal.'
       message:
         $ref: '#/components/messages/ReservationConfirmed'
+  hotel.ReservationCancelled.v1:
+    description: A held or confirmed booking was cancelled.
+    subscribe:
+      operationId: onReservationCancelled
+      summary: 'Published by booking. Consumed by roomops, portal.'
+      message:
+        $ref: '#/components/messages/ReservationCancelled'
+  hotel.ReservationNoShow.v1:
+    description: A confirmed booking was marked no-show.
+    subscribe:
+      operationId: onReservationNoShow
+      summary: 'Published by booking. Consumed by roomops, portal.'
+      message:
+        $ref: '#/components/messages/ReservationNoShow'
+  hotel.RefundRequested.v1:
+    description: Booking asks Billing to file ONE refund request (cancellation, no-show, late payment).
+    subscribe:
+      operationId: onRefundRequested
+      summary: 'Published by booking. Consumed by billing.'
+      message:
+        $ref: '#/components/messages/RefundRequested'
+  hotel.PaymentCaptured.v1:
+    description: A payment was verified and saved once.
+    subscribe:
+      operationId: onPaymentCaptured
+      summary: 'Published by billing. Consumed by booking, portal.'
+      message:
+        $ref: '#/components/messages/PaymentCaptured'
+  hotel.RefundCompleted.v1:
+    description: A manager approved a refund and the provider accepted it.
+    subscribe:
+      operationId: onRefundCompleted
+      summary: 'Published by billing. Consumed by booking, portal.'
+      message:
+        $ref: '#/components/messages/RefundCompleted'
+  hotel.StayCheckedIn.v1:
+    description: A guest was checked in and rooms assigned.
+    subscribe:
+      operationId: onStayCheckedIn
+      summary: 'Published by roomops. Consumed by booking, billing, portal.'
+      message:
+        $ref: '#/components/messages/StayCheckedIn'
+  hotel.StayCheckedOut.v1:
+    description: A guest was checked out; rooms are DIRTY with cleaning tasks.
+    subscribe:
+      operationId: onStayCheckedOut
+      summary: 'Published by roomops. Consumed by booking, billing, portal.'
+      message:
+        $ref: '#/components/messages/StayCheckedOut'
+  hotel.MaintenanceBlockApproved.v1:
+    description: A maintenance block was activated after Booking set the capacity aside.
+    subscribe:
+      operationId: onMaintenanceBlockApproved
+      summary: 'Published by roomops. Consumed by portal.'
+      message:
+        $ref: '#/components/messages/MaintenanceBlockApproved'
 components:
   messages:
     ReservationConfirmed:
       name: ReservationConfirmed
-      title: Reservation confirmed
+      title: ReservationConfirmed
+      summary: A booking became CONFIRMED (verified payment, manager-approved guarantee, or a partner import).
       contentType: application/json
       payload:
         $ref: '#/components/schemas/ReservationConfirmedEnvelope'
-      examples:
-        - name: two nights, one Standard room
-          payload:
-            eventId: 6f1c0b7e-2d0a-4a53-9d0e-6a7a5f0c2b11
-            schemaVersion: 1
-            eventType: ReservationConfirmed
-            occurredAt: '2026-12-01T02:15:00Z'
-            aggregateId: 0b6d2f0e-7d3a-4c19-8f6e-3d2e1a9c7b55
-            aggregateVersion: 2
-            correlationId: 0b6d2f0e-7d3a-4c19-8f6e-3d2e1a9c7b55
-            data:
-              reservationId: 0b6d2f0e-7d3a-4c19-8f6e-3d2e1a9c7b55
-              roomTypeId: 11111111-1111-4111-8111-111111111111
-              checkIn: '2026-12-10'
-              checkOut: '2026-12-12'
-              quantity: 1
-              amountMinor: 500000
-              currency: PHP
+    ReservationCancelled:
+      name: ReservationCancelled
+      title: ReservationCancelled
+      summary: A held or confirmed booking was cancelled.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ReservationCancelledEnvelope'
+    ReservationNoShow:
+      name: ReservationNoShow
+      title: ReservationNoShow
+      summary: A confirmed booking was marked no-show.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ReservationNoShowEnvelope'
+    RefundRequested:
+      name: RefundRequested
+      title: RefundRequested
+      summary: Booking asks Billing to file ONE refund request (cancellation, no-show, late payment).
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/RefundRequestedEnvelope'
+    PaymentCaptured:
+      name: PaymentCaptured
+      title: PaymentCaptured
+      summary: A payment was verified and saved once.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/PaymentCapturedEnvelope'
+    RefundCompleted:
+      name: RefundCompleted
+      title: RefundCompleted
+      summary: A manager approved a refund and the provider accepted it.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/RefundCompletedEnvelope'
+    StayCheckedIn:
+      name: StayCheckedIn
+      title: StayCheckedIn
+      summary: A guest was checked in and rooms assigned.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/StayCheckedInEnvelope'
+    StayCheckedOut:
+      name: StayCheckedOut
+      title: StayCheckedOut
+      summary: A guest was checked out; rooms are DIRTY with cleaning tasks.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/StayCheckedOutEnvelope'
+    MaintenanceBlockApproved:
+      name: MaintenanceBlockApproved
+      title: MaintenanceBlockApproved
+      summary: A maintenance block was activated after Booking set the capacity aside.
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/MaintenanceBlockApprovedEnvelope'
   schemas:
     ReservationConfirmedEnvelope:
       type: object
@@ -56,8 +153,8 @@ components:
         schemaVersion: { type: integer, const: 1 }
         eventType: { type: string, const: ReservationConfirmed }
         occurredAt: { type: string, format: date-time, description: UTC. }
-        aggregateId: { type: string, format: uuid, description: The reservation id. }
-        aggregateVersion: { type: integer, minimum: 1, description: Increases with every change to the reservation. }
+        aggregateId: { type: string, format: uuid }
+        aggregateVersion: { type: integer, minimum: 1 }
         correlationId: { type: string, format: uuid }
         data:
           type: object
@@ -65,8 +162,157 @@ components:
           properties:
             reservationId: { type: string, format: uuid }
             roomTypeId: { type: string, format: uuid }
-            checkIn: { type: string, format: date, description: Asia/Manila date. }
-            checkOut: { type: string, format: date, description: Asia/Manila date. }
-            quantity: { type: integer, minimum: 1, maximum: 5 }
-            amountMinor: { type: integer, description: Centavos. }
-            currency: { type: string, const: PHP }
+            checkIn: { type: string, format: date }
+            checkOut: { type: string, format: date }
+            quantity: { type: integer }
+            amountMinor: { type: integer }
+            currency: { type: string }
+    ReservationCancelledEnvelope:
+      type: object
+      required: [eventId, schemaVersion, eventType, occurredAt, aggregateId, aggregateVersion, correlationId, data]
+      properties:
+        eventId: { type: string, format: uuid, description: Reused on every retry. }
+        schemaVersion: { type: integer, const: 1 }
+        eventType: { type: string, const: ReservationCancelled }
+        occurredAt: { type: string, format: date-time, description: UTC. }
+        aggregateId: { type: string, format: uuid }
+        aggregateVersion: { type: integer, minimum: 1 }
+        correlationId: { type: string, format: uuid }
+        data:
+          type: object
+          required: [reservationId, penaltyMinor, currency]
+          properties:
+            reservationId: { type: string, format: uuid }
+            penaltyMinor: { type: integer }
+            currency: { type: string }
+    ReservationNoShowEnvelope:
+      type: object
+      required: [eventId, schemaVersion, eventType, occurredAt, aggregateId, aggregateVersion, correlationId, data]
+      properties:
+        eventId: { type: string, format: uuid, description: Reused on every retry. }
+        schemaVersion: { type: integer, const: 1 }
+        eventType: { type: string, const: ReservationNoShow }
+        occurredAt: { type: string, format: date-time, description: UTC. }
+        aggregateId: { type: string, format: uuid }
+        aggregateVersion: { type: integer, minimum: 1 }
+        correlationId: { type: string, format: uuid }
+        data:
+          type: object
+          required: [reservationId, penaltyMinor, currency]
+          properties:
+            reservationId: { type: string, format: uuid }
+            penaltyMinor: { type: integer }
+            currency: { type: string }
+    RefundRequestedEnvelope:
+      type: object
+      required: [eventId, schemaVersion, eventType, occurredAt, aggregateId, aggregateVersion, correlationId, data]
+      properties:
+        eventId: { type: string, format: uuid, description: Reused on every retry. }
+        schemaVersion: { type: integer, const: 1 }
+        eventType: { type: string, const: RefundRequested }
+        occurredAt: { type: string, format: date-time, description: UTC. }
+        aggregateId: { type: string, format: uuid }
+        aggregateVersion: { type: integer, minimum: 1 }
+        correlationId: { type: string, format: uuid }
+        data:
+          type: object
+          required: [reservationId, amountMinor, currency, reason]
+          properties:
+            reservationId: { type: string, format: uuid }
+            paymentId: { type: string, format: uuid }
+            amountMinor: { type: integer }
+            currency: { type: string }
+            reason: { type: string }
+    PaymentCapturedEnvelope:
+      type: object
+      required: [eventId, schemaVersion, eventType, occurredAt, aggregateId, aggregateVersion, correlationId, data]
+      properties:
+        eventId: { type: string, format: uuid, description: Reused on every retry. }
+        schemaVersion: { type: integer, const: 1 }
+        eventType: { type: string, const: PaymentCaptured }
+        occurredAt: { type: string, format: date-time, description: UTC. }
+        aggregateId: { type: string, format: uuid }
+        aggregateVersion: { type: integer, minimum: 1 }
+        correlationId: { type: string, format: uuid }
+        data:
+          type: object
+          required: [paymentId, reservationId, amountMinor, currency]
+          properties:
+            paymentId: { type: string, format: uuid }
+            reservationId: { type: string, format: uuid }
+            amountMinor: { type: integer }
+            currency: { type: string }
+            method: { type: string }
+    RefundCompletedEnvelope:
+      type: object
+      required: [eventId, schemaVersion, eventType, occurredAt, aggregateId, aggregateVersion, correlationId, data]
+      properties:
+        eventId: { type: string, format: uuid, description: Reused on every retry. }
+        schemaVersion: { type: integer, const: 1 }
+        eventType: { type: string, const: RefundCompleted }
+        occurredAt: { type: string, format: date-time, description: UTC. }
+        aggregateId: { type: string, format: uuid }
+        aggregateVersion: { type: integer, minimum: 1 }
+        correlationId: { type: string, format: uuid }
+        data:
+          type: object
+          required: [refundId, paymentId, reservationId, amountMinor, currency]
+          properties:
+            refundId: { type: string, format: uuid }
+            paymentId: { type: string, format: uuid }
+            reservationId: { type: string, format: uuid }
+            amountMinor: { type: integer }
+            currency: { type: string }
+    StayCheckedInEnvelope:
+      type: object
+      required: [eventId, schemaVersion, eventType, occurredAt, aggregateId, aggregateVersion, correlationId, data]
+      properties:
+        eventId: { type: string, format: uuid, description: Reused on every retry. }
+        schemaVersion: { type: integer, const: 1 }
+        eventType: { type: string, const: StayCheckedIn }
+        occurredAt: { type: string, format: date-time, description: UTC. }
+        aggregateId: { type: string, format: uuid }
+        aggregateVersion: { type: integer, minimum: 1 }
+        correlationId: { type: string, format: uuid }
+        data:
+          type: object
+          required: [reservationId, stayId, roomIds]
+          properties:
+            reservationId: { type: string, format: uuid }
+            stayId: { type: string, format: uuid }
+            roomIds: { type: array, items: { type: string, format: uuid } }
+    StayCheckedOutEnvelope:
+      type: object
+      required: [eventId, schemaVersion, eventType, occurredAt, aggregateId, aggregateVersion, correlationId, data]
+      properties:
+        eventId: { type: string, format: uuid, description: Reused on every retry. }
+        schemaVersion: { type: integer, const: 1 }
+        eventType: { type: string, const: StayCheckedOut }
+        occurredAt: { type: string, format: date-time, description: UTC. }
+        aggregateId: { type: string, format: uuid }
+        aggregateVersion: { type: integer, minimum: 1 }
+        correlationId: { type: string, format: uuid }
+        data:
+          type: object
+          required: [reservationId, stayId, roomIds]
+          properties:
+            reservationId: { type: string, format: uuid }
+            stayId: { type: string, format: uuid }
+            roomIds: { type: array, items: { type: string, format: uuid } }
+    MaintenanceBlockApprovedEnvelope:
+      type: object
+      required: [eventId, schemaVersion, eventType, occurredAt, aggregateId, aggregateVersion, correlationId, data]
+      properties:
+        eventId: { type: string, format: uuid, description: Reused on every retry. }
+        schemaVersion: { type: integer, const: 1 }
+        eventType: { type: string, const: MaintenanceBlockApproved }
+        occurredAt: { type: string, format: date-time, description: UTC. }
+        aggregateId: { type: string, format: uuid }
+        aggregateVersion: { type: integer, minimum: 1 }
+        correlationId: { type: string, format: uuid }
+        data:
+          type: object
+          required: [blockId, requestId]
+          properties:
+            blockId: { type: string, format: uuid }
+            requestId: { type: string, format: uuid }
