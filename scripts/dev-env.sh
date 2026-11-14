@@ -1,8 +1,7 @@
-# Source this for local runs without Docker. Points at a MySQL on 127.0.0.1 (default port 3307).
+# Source this for local runs without Docker. Points at a SQL Server on 127.0.0.1 (default port 1433).
 # Demo values only. Usage: source scripts/dev-env.sh
-export DB_ADMIN_HOST=127.0.0.1 DB_ADMIN_PORT=${DB_ADMIN_PORT:-3307} DB_ADMIN_USER=root DB_ADMIN_PASS=
-# MySQL in a container sees the Docker gateway (e.g. 172.18.0.1), not 127.0.0.1, so CI sets '%'.
-export DB_APP_HOST_PATTERN=${DB_APP_HOST_PATTERN:-127.0.0.1}
+# An empty DB_ADMIN_USER signs in to SQL Server with your Windows account; CI sets sa and its password.
+export DB_ADMIN_HOST=127.0.0.1 DB_ADMIN_PORT=${DB_ADMIN_PORT:-1433} DB_ADMIN_USER=${DB_ADMIN_USER:-} DB_ADMIN_PASS=${DB_ADMIN_PASS:-}
 for s in BOOKING ROOMOPS BILLING PORTAL; do
   l=$(echo "$s" | tr 'A-Z' 'a-z')
   export ${s}_DB_HOST=127.0.0.1 ${s}_DB_PORT=$DB_ADMIN_PORT ${s}_DB_NAME=${l}_db ${s}_DB_USER=${l}_app ${s}_DB_PASS=dev-${l}-pass

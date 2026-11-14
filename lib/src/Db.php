@@ -9,13 +9,29 @@ final class Db
     public static function connect(string $prefix): \PDO
     {
         $p = strtoupper($prefix) . '_DB_';
-        $dsn = sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', getenv($p . 'HOST') ?: 'mysql', getenv($p . 'PORT') ?: '3306', getenv($p . 'NAME'));
-        $pdo = new \PDO($dsn, (string) getenv($p . 'USER'), (string) getenv($p . 'PASS'), [
-            \PDO::ATTR_ERRMODE            => \PDO::ERRMODE_EXCEPTION,
-            \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
-            \PDO::ATTR_EMULATE_PREPARES   => false,
+        $pdo = new \PDO(self::dsn(getenv($p . 'HOST') ?: 'mssql', getenv($p . 'PORT') ?: '1433', (string) getenv($p . 'NAME')), (string) getenv($p . 'USER'), (string) getenv($p . 'PASS'), [
+            \PDO::ATTR_ERRMODE                     => \PDO::ERRMODE_EXCEPTION,
+            \PDO::ATTR_DEFAULT_FETCH_MODE          => \PDO::FETCH_ASSOC,
+            \PDO::SQLSRV_ATTR_FETCHES_NUMERIC_TYPE => true, // INT columns come back as PHP ints (BIGINT still comes back as a string)
         ]);
-        $pdo->exec("SET time_zone = '+00:00'");
+        // Wait at most 50 seconds for a row lock, like MySQL's default, instead of forever.
+        $pdo->exec('SET LOCK_TIMEOUT 50000');
         return $pdo;
+    }
+
+    /**
+     * SQL Server connection string. An empty user and password means Windows sign-in (local development).
+     * DB_TRUST_SERVER_CERT=0 makes the driver check the server's TLS certificate; the default trusts a self-signed one.
+     */
+    public static function dsn(string $host, string $port, string $database = ''): string
+    {
+        $trust = getenv('DB_TRUST_SERVER_CERT') === '0' ? 'no' : 'yes';
+        return "sqlsrv:Server={$host},{$port};Encrypt=yes;TrustServerCertificate={$trust}" . ($database === '' ? '' : ";Database={$database}");
+    }
+
+    /** True when the error is a duplicate key (unique constraint 2627 or unique index 2601). */
+    public static function isDuplicateKey(\PDOException $e): bool
+    {
+        return in_array($e->errorInfo[1] ?? 0, [2601, 2627], true);
     }
 }

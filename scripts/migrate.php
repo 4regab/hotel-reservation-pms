@@ -1,21 +1,20 @@
 <?php
 declare(strict_types=1);
 
-// Migrations runner. Creates each service database and its limited user (if missing), then applies
+// Migrations runner. Creates each service database and its limited login (if missing), then applies
 // every not-yet-applied migrations/*.sql file in name order, once. Safe to run again.
-// Env: DB_ADMIN_HOST, DB_ADMIN_PORT, DB_ADMIN_USER, DB_ADMIN_PASS, plus <SERVICE>_DB_NAME/_USER/_PASS.
+// A file is split into batches on lines that hold only GO, and the whole file commits or rolls back together.
+// Env: DB_ADMIN_HOST, DB_ADMIN_PORT, DB_ADMIN_USER, DB_ADMIN_PASS (empty user = Windows sign-in), plus <SERVICE>_DB_NAME/_USER/_PASS.
 // Usage: php scripts/migrate.php [service ...]   (default: all four)
+require dirname(__DIR__) . '/autoload.php';
 
 $root = dirname(__DIR__);
 $services = array_slice($argv, 1) ?: ['booking', 'roomops', 'billing', 'portal'];
-$host = getenv('DB_ADMIN_HOST') ?: '127.0.0.1';
-$port = getenv('DB_ADMIN_PORT') ?: '3306';
-$admin = new PDO("mysql:host={$host};port={$port};charset=utf8mb4", (string) (getenv('DB_ADMIN_USER') ?: 'root'), (string) getenv('DB_ADMIN_PASS'), [
+$admin = new PDO(Lib\Db::dsn(getenv('DB_ADMIN_HOST') ?: '127.0.0.1', getenv('DB_ADMIN_PORT') ?: '1433'), (string) getenv('DB_ADMIN_USER'), (string) getenv('DB_ADMIN_PASS'), [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_EMULATE_PREPARES => true, // lets one file hold many statements
 ]);
-$ident = static fn (string $s): string => '`' . str_replace('`', '', $s) . '`';
-$hostPattern = getenv('DB_APP_HOST_PATTERN') ?: '%';
+$ident = static fn (string $s): string => '[' . str_replace(']', ']]', $s) . ']';
+$text = static fn (string $s): string => "N'" . str_replace("'", "''", $s) . "'";
 
 foreach ($services as $svc) {
     $p = strtoupper($svc) . '_DB_';
@@ -26,9 +25,15 @@ foreach ($services as $svc) {
         fwrite(STDERR, "missing {$p}NAME/USER/PASS\n");
         exit(2);
     }
-    $admin->exec("CREATE DATABASE IF NOT EXISTS {$ident($name)} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci");
+    $admin->exec("USE master; IF DB_ID({$text($name)}) IS NULL CREATE DATABASE {$ident($name)} COLLATE Latin1_General_100_CI_AI_SC_UTF8");
+    // Plain reads see the last committed data instead of waiting on writers, as in MySQL. Locking reads (UPDLOCK) still wait.
+    $st = $admin->prepare('SELECT is_read_committed_snapshot_on FROM sys.databases WHERE name = ?');
+    $st->execute([$name]);
+    if ((int) $st->fetchColumn() !== 1) {
+        $admin->exec("ALTER DATABASE {$ident($name)} SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE");
+    }
     $admin->exec('USE ' . $ident($name));
-    $admin->exec('CREATE TABLE IF NOT EXISTS schema_migrations (filename VARCHAR(120) NOT NULL PRIMARY KEY, applied_at DATETIME NOT NULL) ENGINE=InnoDB');
+    $admin->exec("IF OBJECT_ID(N'dbo.schema_migrations', N'U') IS NULL CREATE TABLE schema_migrations (filename NVARCHAR(120) NOT NULL PRIMARY KEY, applied_at DATETIME2(0) NOT NULL)");
     $done = $admin->query('SELECT filename FROM schema_migrations')->fetchAll(PDO::FETCH_COLUMN);
     $files = glob("{$root}/{$svc}/migrations/*.sql") ?: [];
     sort($files);
@@ -38,21 +43,42 @@ foreach ($services as $svc) {
             continue;
         }
         echo "[{$svc}] applying {$base}\n";
-        $admin->exec((string) file_get_contents($f));
-        $admin->prepare('INSERT INTO schema_migrations (filename, applied_at) VALUES (?, UTC_TIMESTAMP())')->execute([$base]);
+        $admin->beginTransaction();
+        try {
+            foreach (preg_split('/^\s*GO\s*$/mi', (string) file_get_contents($f)) as $batch) {
+                if (trim($batch) !== '') {
+                    $admin->exec($batch);
+                }
+            }
+            $admin->prepare('INSERT INTO schema_migrations (filename, applied_at) VALUES (?, DATETRUNC(SECOND, SYSUTCDATETIME()))')->execute([$base]);
+            $admin->commit();
+        } catch (Throwable $e) {
+            if ($admin->inTransaction()) {
+                $admin->rollBack();
+            }
+            fwrite(STDERR, "[{$svc}] {$base} failed: {$e->getMessage()}\n");
+            exit(1);
+        }
     }
-    // One limited user per database: data changes only, no schema changes.
-    $q = $admin->quote($user) . '@' . $admin->quote($hostPattern);
-    $admin->exec("CREATE USER IF NOT EXISTS {$q} IDENTIFIED BY " . $admin->quote($pass));
-    $admin->exec("ALTER USER {$q} IDENTIFIED BY " . $admin->quote($pass));
+    // One limited login per database: data changes only, no schema changes, and no user in any other database.
+    // ponytail: CHECK_POLICY OFF because the generated hex passwords fail Windows' character-mix rule; their length is what makes them strong.
+    $login = "CREATE LOGIN {$ident($user)} WITH PASSWORD = {$text($pass)}, DEFAULT_DATABASE = {$ident($name)}, CHECK_POLICY = OFF";
+    $admin->exec("IF SUSER_ID({$text($user)}) IS NULL EXEC({$text($login)}) ELSE ALTER LOGIN {$ident($user)} WITH PASSWORD = {$text($pass)}");
+    $admin->exec("IF USER_ID({$text($user)}) IS NULL CREATE USER {$ident($user)} FOR LOGIN {$ident($user)}");
     // Per-table grants so audit_log stays append-only (no UPDATE or DELETE) and schema_migrations is untouchable.
-    $admin->exec("REVOKE ALL PRIVILEGES, GRANT OPTION FROM {$q}");
-    foreach ($admin->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN) as $table) {
+    $old = $admin->prepare("SELECT p.permission_name, s.name AS sch, o.name AS obj FROM sys.database_permissions p
+                              JOIN sys.objects o ON o.object_id = p.major_id JOIN sys.schemas s ON s.schema_id = o.schema_id
+                             WHERE p.class = 1 AND p.grantee_principal_id = USER_ID(?)");
+    $old->execute([$user]);
+    foreach ($old->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $admin->exec("REVOKE {$r['permission_name']} ON {$ident($r['sch'])}.{$ident($r['obj'])} FROM {$ident($user)}");
+    }
+    foreach ($admin->query('SELECT name FROM sys.tables WHERE is_ms_shipped = 0')->fetchAll(PDO::FETCH_COLUMN) as $table) {
         if ($table === 'schema_migrations') {
             continue;
         }
         $privs = $table === 'audit_log' ? 'SELECT, INSERT' : 'SELECT, INSERT, UPDATE, DELETE';
-        $admin->exec("GRANT {$privs} ON {$ident($name)}.{$ident($table)} TO {$q}");
+        $admin->exec("GRANT {$privs} ON dbo.{$ident($table)} TO {$ident($user)}");
     }
 }
 echo "migrations up to date\n";
