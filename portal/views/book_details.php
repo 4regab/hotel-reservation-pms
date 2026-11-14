@@ -26,10 +26,9 @@
           <dl class="mt-4 space-y-3 text-sm">
             <div class="flex justify-between gap-2"><dt class="text-ink-600">Check-in</dt><dd class="font-medium text-ink-950"><?= e(d($stay['checkIn'])) ?></dd></div>
             <div class="flex justify-between gap-2"><dt class="text-ink-600">Check-out</dt><dd class="font-medium text-ink-950"><?= e(d($stay['checkOut'])) ?></dd></div>
-            <div class="flex justify-between gap-2"><dt class="text-ink-600">Nights</dt><dd class="font-medium text-ink-950"><?= e($nights) ?></dd></div>
-            <div class="flex items-baseline justify-between gap-2 border-t border-ink-200 pt-3"><dt class="font-semibold text-ink-950">Total</dt><dd class="font-display text-2xl font-medium text-ink-950"><?= e(php_money($total)) ?></dd></div>
           </dl>
-          <p class="mt-3 text-xs text-ink-600">Taxes included. Free cancellation until 48 hours before arrival. After that the first night is charged.</p>
+          <dl class="mt-4 space-y-2 border-t border-ink-100 pt-4 text-sm"><?= price_rows($total, $nights, (int) $stay['rooms']) ?></dl>
+          <p class="mt-3 text-xs text-ink-600">Free cancellation until 48 hours before arrival. After that the first night is charged.</p>
         </div>
       </div>
     </aside>

@@ -21,4 +21,5 @@ $balance = max(0, $total - $paid + $refunded); ?>
     <tr class="font-semibold"><td>Balance due</td><td class="text-right"><?= e(php_money($balance)) ?></td></tr>
   </tbody>
 </table></div>
-<p class="mt-4 text-xs text-ink-600">Amounts in Philippine pesos, taxes included. Card numbers are never stored by MA Hotel.</p>
+<p class="mt-4 text-sm text-ink-700">Charges of <?= e(php_money($total)) ?> include <?= e(php_money(price_parts($total, 1)['vat'])) ?> VAT (12%).</p>
+<p class="mt-1 text-xs text-ink-600">Amounts in Philippine pesos, taxes included. Card numbers are never stored by MA Hotel.</p>

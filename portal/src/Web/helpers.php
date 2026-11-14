@@ -123,6 +123,30 @@ function icon(string $name, string $class = 'size-5'): string
     return '<svg class="' . e($class) . '" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="' . e($p) . '"/></svg>';
 }
 
+/**
+ * Split a tax-inclusive room total for display. Prices already include the Philippines' 12% VAT, so this only
+ * shows what the total is made of; it never changes an amount.
+ * @return array{rate:?int,net:int,vat:int} rate per room per night (null when it does not divide evenly)
+ */
+function price_parts(int $totalMinor, int $nights, int $rooms = 1): array
+{
+    $units = max(1, $nights) * max(1, $rooms);
+    $net = (int) round($totalMinor / 1.12);
+    return ['rate' => $totalMinor % $units === 0 ? intdiv($totalMinor, $units) : null, 'net' => $net, 'vat' => $totalMinor - $net];
+}
+
+/** The price breakdown rows used on the booking, payment and checkout pages. */
+function price_rows(int $totalMinor, int $nights, int $rooms = 1): string
+{
+    $p = price_parts($totalMinor, $nights, $rooms);
+    $what = $nights . ($nights === 1 ? ' night' : ' nights') . ($rooms > 1 ? ' x ' . $rooms . ' rooms' : '');
+    $row = fn (string $k, string $v, string $cls = '') => '<div class="flex justify-between gap-3 ' . $cls . '"><dt class="text-ink-600">' . $k . '</dt><dd class="tabular-nums text-ink-950">' . $v . '</dd></div>';
+    return ($p['rate'] !== null ? $row(e(php_money($p['rate'])) . ' x ' . e($what), e(php_money($totalMinor))) : $row('Room, ' . e($what), e(php_money($totalMinor))))
+        . $row('Price before VAT', e(php_money($p['net'])), 'text-sm')
+        . $row('VAT (12%)', e(php_money($p['vat'])), 'text-sm')
+        . '<div class="flex items-baseline justify-between gap-3 border-t border-ink-200 pt-3"><dt class="font-semibold text-ink-950">Total <span class="block text-xs font-normal text-ink-600">VAT included</span></dt><dd class="font-display text-2xl font-medium tabular-nums text-ink-950 sm:text-3xl">' . e(php_money($totalMinor)) . '</dd></div>';
+}
+
 /** Today's date in Manila as Y-m-d. */
 function today(): string
 {

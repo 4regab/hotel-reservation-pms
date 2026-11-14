@@ -20,8 +20,8 @@ $live = $r['status'] === 'HELD' && $secondsLeft > 0; ?>
         <dl class="mt-4 grid gap-4 text-sm sm:grid-cols-2">
           <div class="rounded-xl bg-ink-50 p-3"><dt class="text-ink-600">Check-in</dt><dd class="mt-0.5 font-medium text-ink-950"><?= e(d($r['checkIn'])) ?> from 2:00 PM</dd></div>
           <div class="rounded-xl bg-ink-50 p-3"><dt class="text-ink-600">Check-out</dt><dd class="mt-0.5 font-medium text-ink-950"><?= e(d($r['checkOut'])) ?> by 12:00 noon</dd></div>
-          <div class="flex items-baseline justify-between gap-2 border-t border-ink-200 pt-4 sm:col-span-2"><dt class="font-semibold text-ink-950">Amount to pay</dt><dd class="font-display text-3xl font-medium text-ink-950"><?= e(php_money($r['amountMinor'])) ?></dd></div>
         </dl>
+        <dl class="mt-4 space-y-2 border-t border-ink-100 pt-4 text-sm"><?= price_rows((int) $r['amountMinor'], Portal\Fmt::nights($r['checkIn'], $r['checkOut']), (int) $r['quantity']) ?></dl>
         <?= form_open($c, '/book/pay/' . $r['reservationId'], 'mt-6') ?>
           <input type="hidden" name="idem" value="<?= e(Lib\Uuid::v4()) ?>">
           <button class="btn btn-primary btn-lg w-full"><?= icon('shield', 'size-5') ?> Pay <?= e(php_money($r['amountMinor'])) ?> securely</button>
