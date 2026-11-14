@@ -62,13 +62,6 @@ jobs:
           extensions: pdo_mysql
       - name: Start the four services, run migrations and load demo data
         run: bash scripts/dev-stack.sh start
-      - name: "TEMP diagnostics: client address, accounts, app login"
-        run: |
-          php -r '$r = new PDO("mysql:host=127.0.0.1;port=3306", "root", "");
-          echo "root seen as: ", $r->query("SELECT USER()")->fetchColumn(), "\n";
-          foreach ($r->query("SELECT user, host, plugin FROM mysql.user ORDER BY user")->fetchAll(PDO::FETCH_NUM) as $u) echo implode(" ", $u), "\n";
-          $a = new PDO("mysql:host=127.0.0.1;port=3306", "billing_app", "dev-billing-pass");
-          echo "billing_app login: ", $a->query("SELECT CURRENT_USER()")->fetchColumn(), "\n";'
       - name: Full journey (search, hold, pay, confirm, email, check-in, check-out, cleaning, ready)
         run: bash -c 'source scripts/dev-env.sh && php tests/e2e/journey.php'
       - name: Business rules (approvals, no-show, OTA import, privacy, password reset, roles)
