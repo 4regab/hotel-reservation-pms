@@ -14,7 +14,7 @@ No images, logos, illustrations or text from them are used. They share one visua
 | Layout | Wide pages (about 1200 px of content), a 12-column grid, big hero at the top. The hero photo sits inside a large rounded frame with a margin around it, not edge to edge. | `container-page` max width 80rem (1280 px) with 16 / 24 / 32 px side padding. The landing hero is an inset rounded frame (`rounded-[2rem]`) with the nav on top of the photo. |
 | Spacing | Generous and regular: sections 96 to 128 px apart, cards 16 to 24 px apart. | An 8 px rhythm. Sections `mt-24 sm:mt-32`, card gaps `gap-4 sm:gap-6`, card padding `p-5 sm:p-6`. |
 | Type | One neo-grotesk family. Very large, light to medium headlines (64 to 96 px) with tight tracking and leading near 1. Body 14 to 16 px, muted gray. Few bold weights. | Display: **Inter Tight** (500, tight tracking). Body and UI: **Inter** (400 to 600). Both self-hosted under the SIL Open Font License. |
-| Colour | Near-black ink, off-white canvas, white cards, muted grays, and one warm or bright accent used only for the main action. | Ink (cool charcoal), canvas `#f4f4f1`, white surfaces, one accent **clay** (warm terracotta) for main actions, and a soft **dusk** blue for information and charts. |
+| Colour | Near-black ink, off-white canvas, white cards, muted grays, and one warm or bright accent used only for the main action. | Navy ink, warm-white canvas `#f6f5f1`, white surfaces, one accent **tangerine** (token name `clay`) for main actions, and a soft **dusk** blue for information and charts. |
 | Radii | Large: 24 to 32 px on hero and photo cards, 16 px on cards, fully round pills on buttons, search fields and tags. | `rounded-[2rem]` hero, `rounded-3xl` photos, `rounded-2xl` cards, `rounded-full` buttons, inputs inside the search bar and badges. Staff tables and cards use `rounded-2xl` / `rounded-xl`. |
 | Shadows | Almost none. Cards are flat or have a very soft, wide shadow. The search bar floats with one larger shadow. | `shadow-soft` on cards, `shadow-float` only on the search bar and menus. Borders are hairline `ink-200/70`. |
 | Images | Calm, slightly dark photos, cropped wide, rounded, with a dark gradient where text sits on them. | The existing CC0 photos, with an ink gradient under hero text. No new decoration images. |
@@ -42,11 +42,14 @@ All tokens live in `portal/assets/app.src.css` under `@theme`. Only Tailwind's b
 
 **Colour**
 
+The palette is "navy on white" with a tangerine accent: a known hotel pairing (deep navy type and panels, warm white pages, one bright orange action colour). It also matches the orange-on-dark accents of the references.
+The token names `ink` (navy) and `clay` (tangerine) are kept from the first draft so the markup did not change.
+
 | Token | Use | Contrast note |
 | --- | --- | --- |
-| `ink-50 … ink-950` (cool charcoal, `ink-950` `#0b1015`) | Text, dark surfaces, borders | `ink-500` `#6b7681` is the lightest text allowed on white (4.6:1). Body text uses `ink-600` or darker. |
-| `canvas` `#f4f4f1` | Page background | |
-| `clay-50 … clay-900` (terracotta, `clay-600` `#b5441a`) | Main action buttons, the logo dot, small accents | White on `clay-600` is 5.5:1. `clay-400/500` are decoration only, never text. |
+| `ink-50 … ink-950` (navy, brand navy `ink-900` `#1f2b4d`) | Text, dark surfaces, borders | `ink-500` `#646b84` is the lightest text allowed on white or canvas (4.8:1). Body text uses `ink-600` or darker. |
+| `canvas` `#f6f5f1` | Page background | |
+| `clay-50 … clay-900` (tangerine, `clay-500` `#f7941d`) | Main action buttons, the logo dot, small accents | Buttons use navy text on `clay-500` (6.1:1). Focus rings and accent text use `clay-700` (4.6:1 on white). |
 | `dusk-50 … dusk-900` (soft blue, `dusk-600` `#3b5f8f`) | Information badges and alerts, charts | White on `dusk-600` is 6.5:1. |
 | Tailwind `emerald`, `amber`, `red` | Success, warning, error states | Text always uses the 800/900 shades on 50/100 fills. |
 
@@ -74,7 +77,7 @@ New:
 
 ## 4. Logo
 
-An original mark drawn by hand in SVG: a rounded square holding two arches that form an "M" (two doorways side by side), with a clay dot above the middle stem like a lamp over the door.
+An original mark drawn by hand in SVG: a rounded square holding two arches that form an "M" (two doorways side by side), with a tangerine dot above the middle stem like a lamp over the door.
 The wordmark "MA HOTEL" is drawn with strokes (no font needed): "MA" heavier, "HOTEL" lighter and spaced.
 Files in `portal/public/assets/brand/`: full lockup and mark only, each in a light-background and a dark-background version, an SVG favicon, and 32 px and 180 px PNG icons. Usage rules are in `docs/BRAND.md`.
 
@@ -107,7 +110,7 @@ Order of work: largest layout pieces first (page shell, header, footer, staff sh
 
 **Errors and empty states**: centred `empty` block with the status number, heading, message and two actions.
 
-**Emails**: table layout with inline styles (email clients ignore stylesheets). Ink header with the wordmark drawn as text, white card, clay button, canvas background, plain-text twin unchanged in content.
+**Emails**: table layout with inline styles (email clients ignore stylesheets). Navy header with the mark and the wordmark as text, white card, tangerine button, canvas background, plain-text twin unchanged in content.
 
 ## 6. How each breakpoint is checked
 
@@ -117,7 +120,7 @@ The real flows are covered by the existing end-to-end tests in CI, which drive t
 ## 7. Accessibility rules
 
 - Semantic landmarks, one `h1` per page, labelled form fields, the skip link stays.
-- Visible focus ring (2 px clay outline with offset) on every interactive element.
+- Visible focus ring (2 px tangerine-700 outline with offset) on every interactive element.
 - Everything works by keyboard. The phone menu is a native `<details>` disclosure.
 - Text contrast at least 4.5:1 (3:1 for large text and chart marks).
 - The hold countdown and form errors are announced (`role="timer"`, `aria-live`, `role="alert"`), as before.

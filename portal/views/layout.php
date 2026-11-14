@@ -33,7 +33,7 @@ $profile = $staff ? '/staff/account' : '/account/profile';
 <meta name="color-scheme" content="light">
 <title><?= e($title !== '' ? $title . ' | MA Hotel' : 'MA Hotel, Metro Manila') ?></title>
 <meta name="description" content="<?= e($description !== '' ? $description : 'MA Hotel is a 45-room boutique hotel in Metro Manila. Book direct for the best rate, with free cancellation up to 48 hours before arrival.') ?>">
-<meta name="theme-color" content="#11171d">
+<meta name="theme-color" content="#1f2b4d">
 <meta property="og:title" content="MA Hotel">
 <meta property="og:description" content="A 45-room boutique hotel in Metro Manila. Book direct, cancel free until 48 hours before arrival.">
 <meta property="og:type" content="website">
@@ -58,7 +58,7 @@ $profile = $staff ? '/staff/account' : '/account/profile';
     <div class="flex items-center gap-1 sm:gap-2">
       <span class="badge badge-slate hidden sm:inline-flex"><?= e(ucfirst($role)) ?></span>
       <a href="<?= e($profile) ?>" class="nav-link"<?= $path === $profile ? ' aria-current="page"' : '' ?>><?= $firstName ?></a>
-      <?= form_open($c, '/logout') ?><button class="btn btn-secondary btn-sm">Sign out</button></form>
+      <?= form_open($c, '/logout') ?><button class="btn btn-secondary">Sign out</button></form>
     </div>
   </div>
   <nav aria-label="Staff" class="no-scrollbar flex gap-1 overflow-x-auto border-t border-ink-100 px-4 py-2 sm:px-6 xl:hidden">

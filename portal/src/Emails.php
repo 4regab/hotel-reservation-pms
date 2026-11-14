@@ -65,25 +65,25 @@ final class Emails
         $tr = '';
         $textRows = '';
         foreach ($rows as $k => $v) {
-            $tr .= '<tr><td style="padding:10px 0;color:#4a5560;font-size:14px;border-bottom:1px solid #e8eaec">' . $e($k) . '</td><td style="padding:10px 0;color:#11171d;font-size:14px;font-weight:600;text-align:right;border-bottom:1px solid #e8eaec">' . $e($v) . '</td></tr>';
+            $tr .= '<tr><td style="padding:10px 0;color:#454f6e;font-size:14px;border-bottom:1px solid #e6e8ef">' . $e($k) . '</td><td style="padding:10px 0;color:#1f2b4d;font-size:14px;font-weight:600;text-align:right;border-bottom:1px solid #e6e8ef">' . $e($v) . '</td></tr>';
             $textRows .= "{$k}: {$v}\n";
         }
         // Colours and fonts follow docs/BRAND.md. Email clients ignore web fonts and many block SVG, so the logo is the PNG mark plus text.
         $logo = $e(Fmt::baseUrl() . '/assets/brand/apple-touch-icon-180.png');
-        $html = '<!doctype html><html lang="en"><body style="margin:0;background:#f4f4f1;font-family:Inter,Arial,Helvetica,sans-serif">'
-            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f1"><tr><td align="center" style="padding:24px 12px">'
-            . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #e8eaec">'
-            . '<tr><td style="background:#11171d;padding:20px 28px"><table role="presentation" cellpadding="0" cellspacing="0"><tr>'
+        $html = '<!doctype html><html lang="en"><body style="margin:0;background:#f6f5f1;font-family:Inter,Arial,Helvetica,sans-serif">'
+            . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f5f1"><tr><td align="center" style="padding:24px 12px">'
+            . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #e6e8ef">'
+            . '<tr><td style="background:#1f2b4d;padding:20px 28px"><table role="presentation" cellpadding="0" cellspacing="0"><tr>'
             . '<td style="padding-right:12px"><img src="' . $logo . '" width="36" height="36" alt="" style="display:block;border-radius:9px"></td>'
             . '<td style="color:#ffffff;font-size:18px;letter-spacing:1px"><strong>MA</strong> HOTEL</td></tr></table></td></tr>'
             . '<tr><td style="padding:32px 28px">'
-            . '<h1 style="margin:0 0 12px;font-size:26px;line-height:1.2;font-weight:600;color:#0b1015">' . $e($heading) . '</h1>'
-            . '<p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#2f3a44">' . $e($intro) . '</p>'
+            . '<h1 style="margin:0 0 12px;font-size:26px;line-height:1.2;font-weight:600;color:#121a30">' . $e($heading) . '</h1>'
+            . '<p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#33405f">' . $e($intro) . '</p>'
             . ($tr !== '' ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px">' . $tr . '</table>' : '')
-            . '<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#4a5560">' . $e($outro) . '</p>'
-            . '<a href="' . $e($link) . '" style="display:inline-block;background:#b5441a;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:13px 24px;border-radius:999px">' . $e($button) . '</a>'
+            . '<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#454f6e">' . $e($outro) . '</p>'
+            . '<a href="' . $e($link) . '" style="display:inline-block;background:#f7941d;color:#121a30;text-decoration:none;font-weight:600;font-size:15px;padding:13px 24px;border-radius:999px">' . $e($button) . '</a>'
             . '</td></tr>'
-            . '<tr><td style="padding:16px 28px;background:#f4f5f6;color:#4a5560;font-size:12px;line-height:1.5">MA Hotel, Metro Manila, Philippines. This message was sent because of activity on your booking or account.</td></tr>'
+            . '<tr><td style="padding:16px 28px;background:#f2f3f7;color:#454f6e;font-size:12px;line-height:1.5">MA Hotel, Metro Manila, Philippines. This message was sent because of activity on your booking or account.</td></tr>'
             . '</table></td></tr></table></body></html>';
         $text = "{$heading}\n\n{$intro}\n\n{$textRows}\n{$outro}\n\n{$button}: {$link}\n";
         return [$subject, $html, $text];

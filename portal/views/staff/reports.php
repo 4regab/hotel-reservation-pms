@@ -33,7 +33,7 @@ $kpi = function (string $name, string $value, string $target, ?bool $ok, string 
         <?php foreach ($occ['days'] as $x) { ?><tr><td><?= e(d($x['date'])) ?></td><td><?= e($x['roomsSold']) ?> of <?= e($x['roomsAvailable']) ?></td><td><?= e($pct($x['occupancy'])) ?></td><td><?= e(php_money($x['adrMinor'])) ?></td><td><?= e(php_money($x['revenueMinor'])) ?></td></tr><?php } ?></tbody></table></div></details>
     </section>
     <div class="mt-6 grid gap-6">
-      <section class="card card-pad" aria-labelledby="rv-h"><h2 id="rv-h" class="text-lg font-semibold">Room revenue by night</h2><div class="mt-3"><?= Charts::bars('Room revenue by night', 'Revenue from booked room-nights each night', $revBars, $php0, null, '#b5441a', '#e2a07a') ?></div></section>
+      <section class="card card-pad" aria-labelledby="rv-h"><h2 id="rv-h" class="text-lg font-semibold">Room revenue by night</h2><div class="mt-3"><?= Charts::bars('Room revenue by night', 'Revenue from booked room-nights each night', $revBars, $php0, null, '#b35f05', '#fbc37f') ?></div></section>
       <section class="card card-pad" aria-labelledby="ty-h"><h2 id="ty-h" class="text-lg font-semibold">By room type</h2>
         <div class="mt-3"><?= Charts::hbars('Room-nights by room type', 'Room-nights sold per room type in the range', array_map(fn ($x) => ['label' => $x['name'], 'value' => $x['roomNights']], $occ['byRoomType']), $whole) ?></div>
         <h3 class="mt-5 text-sm font-semibold">Bookings made in range, by channel</h3>
@@ -44,7 +44,7 @@ $kpi = function (string $name, string $value, string $target, ?bool $ok, string 
 
   <?php if ($rev) { ?>
     <section class="card card-pad mt-6" aria-labelledby="cash-h"><h2 id="cash-h" class="text-lg font-semibold">Cash in and out by day</h2>
-      <div class="mt-3"><?= Charts::bars('Net cash by day', 'Payments minus refunds each day', array_map(fn ($x) => ['label' => $x['date'], 'value' => max(0, $x['netMinor'])], $rev['days']), $php0, null, '#2f3a44') ?></div>
+      <div class="mt-3"><?= Charts::bars('Net cash by day', 'Payments minus refunds each day', array_map(fn ($x) => ['label' => $x['date'], 'value' => max(0, $x['netMinor'])], $rev['days']), $php0, null, '#1f2b4d') ?></div>
       <p class="mt-2 text-sm text-ink-700">Payments <strong><?= e(php_money($rev['totals']['paymentsMinor'])) ?></strong>, refunds <strong><?= e(php_money($rev['totals']['refundsMinor'])) ?></strong>.
         <?php foreach ($rev['byMethod'] as $m) { ?><span class="badge badge-slate"><?= e($m['method']) ?> <?= e(php_money($m['amountMinor'])) ?></span> <?php } ?></p>
     </section>

@@ -88,7 +88,7 @@ function textarea_field(string $label, string $name, string $value = '', string 
 function checkbox_field(string $label, string $name, bool $checked = false, string $extra = ''): string
 {
     $id = 'f-' . preg_replace('/[^a-z0-9]+/i', '-', $name);
-    return '<div class="flex items-start gap-3"><input class="mt-0.5 size-5 shrink-0 rounded accent-clay-600" type="checkbox" id="' . e($id) . '" name="' . e($name) . '" value="1"' . ($checked ? ' checked' : '') . ' ' . $extra . '>'
+    return '<div class="flex items-start gap-3"><input class="mt-0.5 size-5 shrink-0 rounded accent-clay-700" type="checkbox" id="' . e($id) . '" name="' . e($name) . '" value="1"' . ($checked ? ' checked' : '') . ' ' . $extra . '>'
         . '<label for="' . e($id) . '" class="text-sm text-ink-800">' . e($label) . '</label></div>';
 }
 

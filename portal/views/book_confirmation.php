@@ -5,7 +5,7 @@ $ok = in_array($r['status'], ['CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'], true); 
 
   <?php if ($ok) { ?>
     <div class="panel-dark flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:p-8" role="status">
-      <span class="flex size-14 shrink-0 items-center justify-center rounded-full bg-clay-600 text-white"><?= icon('check', 'size-7') ?></span>
+      <span class="flex size-14 shrink-0 items-center justify-center rounded-full bg-clay-500 text-ink-950"><?= icon('check', 'size-7') ?></span>
       <div>
         <p class="font-display text-3xl font-medium tracking-tight text-white sm:text-4xl">Your booking is confirmed.</p>
         <p class="mt-2 text-ink-300">We sent the details to your email. Your booking code is <strong class="font-mono text-white"><?= e($r['code']) ?></strong>.</p>

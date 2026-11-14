@@ -18,5 +18,5 @@ $compact = $compact ?? false; ?>
     <label class="label" for="s-rooms">Rooms</label>
     <select class="input" id="s-rooms" name="rooms"><?php for ($i = 1; $i <= 5; $i++) { echo '<option value="' . $i . '"' . ((int) $form['rooms'] === $i ? ' selected' : '') . '>' . $i . ($i === 1 ? ' room' : ' rooms') . '</option>'; } ?></select>
   </div>
-  <button class="btn btn-primary btn-lg col-span-2 h-full rounded-2xl <?= $compact ? '' : 'lg:col-span-1 lg:px-7' ?>"><?= icon('search', 'size-5') ?> Check availability</button>
+  <button class="btn btn-primary btn-lg col-span-2 h-full <?= $compact ? '' : 'lg:col-span-1 lg:px-7' ?>"><?= icon('search', 'size-5') ?> Check availability</button>
 </form>

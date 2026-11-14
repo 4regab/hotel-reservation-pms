@@ -6,13 +6,13 @@ $live = $r['status'] === 'HELD' && $secondsLeft > 0; ?>
 
   <?php if ($live) { ?>
     <div class="mt-8 grid gap-6 lg:grid-cols-12">
-      <div class="panel-dark flex flex-col justify-between gap-6 p-6 sm:p-8 lg:col-span-5" data-countdown="<?= e($secondsLeft) ?>" data-expired-url="/book/pay/<?= e($r['reservationId']) ?>">
+      <div class="panel-dark flex min-w-0 flex-col justify-between gap-6 p-6 sm:p-8 lg:col-span-5" data-countdown="<?= e($secondsLeft) ?>" data-expired-url="/book/pay/<?= e($r['reservationId']) ?>">
         <p class="flex items-center gap-2 text-sm font-medium text-ink-300"><?= icon('clock', 'size-5 text-clay-300') ?> Your room is held for</p>
-        <p class="font-display text-7xl font-medium tabular-nums tracking-tight text-white sm:text-8xl" data-countdown-text aria-hidden="true"><?= e(sprintf('%d:%02d', intdiv($secondsLeft, 60), $secondsLeft % 60)) ?></p>
+        <p class="font-display text-6xl font-medium tabular-nums sm:text-7xl tracking-tight text-white sm:text-8xl" data-countdown-text aria-hidden="true"><?= e(sprintf('%d:%02d', intdiv($secondsLeft, 60), $secondsLeft % 60)) ?></p>
         <p class="sr-only" data-countdown-live role="timer" aria-live="off"></p>
         <p class="text-sm text-ink-300">minutes. <span data-countdown-note>When the time is up the room goes back on sale.</span></p>
       </div>
-      <div class="card card-pad lg:col-span-7">
+      <div class="card card-pad min-w-0 lg:col-span-7">
         <div class="flex flex-wrap items-start justify-between gap-2">
           <h2 class="font-display text-2xl font-medium"><?= e($r['roomTypeName']) ?><?= $r['quantity'] > 1 ? ' x ' . e($r['quantity']) : '' ?></h2>
           <p class="text-sm text-ink-600">Booking code <span class="font-mono font-medium text-ink-950"><?= e($r['code']) ?></span></p>
