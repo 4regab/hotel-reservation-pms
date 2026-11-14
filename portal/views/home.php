@@ -15,7 +15,7 @@ $faq = [
   <div class="absolute inset-0 -z-10 bg-gradient-to-t from-ink-950 via-ink-950/75 to-ink-950/45"></div>
   <div class="container-page flex min-h-[38rem] flex-col justify-end pb-28 pt-32 sm:min-h-[42rem] sm:pb-32 lg:min-h-[46rem] lg:pb-40">
     <p class="rise [--i:0] eyebrow text-white/80 before:bg-clay-400">Boutique hotel in Metro Manila</p>
-    <h1 id="hero-h" class="rise [--i:1] text-balance mt-5 max-w-5xl font-display text-4xl font-medium leading-[1.02] tracking-tight text-white sm:text-6xl lg:text-7xl">A 45-room hotel in Metro Manila.<span class="block text-white/55">Book direct from <?= e(php_money($min)) ?> a night.</span></h1>
+    <h1 id="hero-h" class="rise [--i:1] text-balance mt-5 max-w-5xl font-display text-4xl font-medium leading-[1.02] tracking-tight text-white sm:text-6xl lg:text-7xl">A 45-room hotel in Metro Manila.<span class="block text-white/75">Book direct from <?= e(php_money($min)) ?> a night.</span></h1>
     <div class="rise [--i:2] mt-8 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
       <p class="text-pretty max-w-md text-base text-white/90 sm:text-lg">Twenty Standard rooms, fifteen Deluxe rooms and ten Suites, from <strong class="font-semibold text-white"><?= e(php_money($min)) ?></strong> a night with taxes included. Cancel free until 48 hours before you arrive.</p>
       <a href="#find" class="btn btn-lg btn-primary btn-arrow shrink-0 self-start sm:order-last sm:self-end">Check availability <span class="btn-chip"><?= icon('arrow', 'size-4') ?></span></a>
