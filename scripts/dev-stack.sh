@@ -22,7 +22,7 @@ case "${1:-start}" in
     $PHP_BIN portal/bin/seed.php
     for pair in portal:8100 booking:8101 roomops:8102 billing:8103; do
       svc=${pair%%:*}; port=${pair##*:}
-      nohup $PHP_BIN -S 127.0.0.1:"$port" -t "$svc/public" "$svc/public/index.php" > "$RUN/$svc.log" 2>&1 &
+      SERVICE_NAME=$svc nohup $PHP_BIN -S 127.0.0.1:"$port" -t "$svc/public" "$svc/public/index.php" > "$RUN/$svc.log" 2>&1 &
       echo $! > "$RUN/$svc.pid"
     done
     nohup bash scripts/jobs-loop.sh > "$RUN/jobs.log" 2>&1 &

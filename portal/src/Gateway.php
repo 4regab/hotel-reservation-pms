@@ -121,7 +121,7 @@ final class Gateway
             $body = json_encode($b);
         }
 
-        $headers = ServiceAuth::headers('portal', $user, $r->header('Idempotency-Key'));
+        $headers = ServiceAuth::headers('portal', $service, $user, $r->header('Idempotency-Key'));
         if ($mode === 'webhook') {
             // Billing verifies the ORIGINAL body and signature, so both are passed through untouched.
             $headers[] = 'Paymongo-Signature: ' . (string) $r->header('Paymongo-Signature');

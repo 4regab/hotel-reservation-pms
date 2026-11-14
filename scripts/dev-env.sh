@@ -7,7 +7,10 @@ for s in BOOKING ROOMOPS BILLING PORTAL; do
   export ${s}_DB_HOST=127.0.0.1 ${s}_DB_PORT=$DB_ADMIN_PORT ${s}_DB_NAME=${l}_db ${s}_DB_USER=${l}_app ${s}_DB_PASS=dev-${l}-pass
 done
 export BOOKING_URL=http://127.0.0.1:8101 ROOMOPS_URL=http://127.0.0.1:8102 BILLING_URL=http://127.0.0.1:8103 PORTAL_URL=http://127.0.0.1:8100
-export TOKEN_PORTAL=dev-token-portal TOKEN_BOOKING=dev-token-booking TOKEN_ROOMOPS=dev-token-roomops TOKEN_BILLING=dev-token-billing
+# one secret per caller->callee pair (demo values)
+for from in PORTAL BOOKING ROOMOPS BILLING; do for to in PORTAL BOOKING ROOMOPS BILLING; do
+  [ "$from" != "$to" ] && export TOKEN_${from}_TO_${to}=dev-pair-$(echo "$from-$to" | tr 'A-Z' 'a-z')
+done; done
 export QUOTE_SECRET=dev-quote-secret PAYMONGO_MODE=mock PAYMONGO_WEBHOOK_SECRET=dev-webhook-secret
 export PUBLIC_BASE_URL=http://127.0.0.1:8100 DEMO_PASSWORD=harborlight-demo DEMO_TOTP_SECRET=JBSWY3DPEHPK3PXP COOKIE_SECURE=0
 export PHP_BIN=${PHP_BIN:-php}

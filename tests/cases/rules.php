@@ -37,7 +37,7 @@ return [
     'rooms: overlap is half-open and OCCUPIED has no manual exit' => function (): void {
         check(RoomRules::overlaps('2026-12-01', '2026-12-04', '2026-12-03', '2026-12-06'), 'overlap');
         check(!RoomRules::overlaps('2026-12-01', '2026-12-04', '2026-12-04', '2026-12-06'), 'back-to-back is fine');
-        check(RoomRules::canSetManually('DIRTY', 'CLEANING') && RoomRules::canSetManually('CLEANING', 'READY'), 'cleaning path');
+        check(RoomRules::canSetManually('DIRTY', 'CLEANING') && !RoomRules::canSetManually('CLEANING', 'READY'), 'cleaning starts by hand but READY only comes from inspection');
         check(!RoomRules::canSetManually('DIRTY', 'READY'), 'cannot skip cleaning');
         check(!RoomRules::canSetManually('OCCUPIED', 'READY') && !RoomRules::canSetManually('READY', 'OCCUPIED'), 'occupied only via stay events');
     },
@@ -98,7 +98,9 @@ return [
         check(!Totp::verify($secret, Totp::code($secret, 1000000 + 300), 1000000), 'far future code');
     },
     'service calls: credentials and signed user context cannot be forged' => function (): void {
-        putenv('TOKEN_PORTAL=portal-secret');
+        putenv('SERVICE_NAME=booking');
+        putenv('TOKEN_PORTAL_TO_BOOKING=portal-to-booking-secret');
+        putenv('TOKEN_BILLING_TO_BOOKING=billing-to-booking-secret');
         $toRequest = function (array $headers): Request {
             $map = [];
             foreach ($headers as $line) {
@@ -107,9 +109,13 @@ return [
             }
             return new Request('GET', '/x', [], $map, '');
         };
-        $ok = $toRequest(ServiceAuth::headers('portal', ['accountId' => 'acc-1', 'role' => 'guest']));
+        $ok = $toRequest(ServiceAuth::headers('portal', 'booking', ['accountId' => 'acc-1', 'role' => 'guest']));
         same(['accountId' => 'acc-1', 'role' => 'guest'], ServiceAuth::authenticate($ok)['user'], 'verified user');
-        same('service', ServiceAuth::authenticate($toRequest(ServiceAuth::headers('portal')))['user']['role'], 'no user -> service');
+        same('service', ServiceAuth::authenticate($toRequest(ServiceAuth::headers('portal', 'booking')))['user']['role'], 'no user -> service');
+        // a credential made for another callee (or another caller) is useless here
+        putenv('TOKEN_PORTAL_TO_ROOMOPS=portal-to-roomops-secret');
+        throws(fn () => ServiceAuth::authenticate($toRequest(ServiceAuth::headers('portal', 'roomops'))), ApiException::class, 401);
+        throws(fn () => ServiceAuth::authenticate($toRequest(ServiceAuth::headers('roomops', 'booking'))), ApiException::class, 401);
 
         $forged = $ok->headers;
         $forged['x-user-context'] = base64_encode(json_encode(['accountId' => 'acc-1', 'role' => 'manager']));

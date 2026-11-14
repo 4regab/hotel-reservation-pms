@@ -12,7 +12,7 @@ final class Peer
      */
     public static function call(string $caller, string $service, string $method, string $path, ?array $user = null, ?array $body = null, ?string $idempotencyKey = null): array
     {
-        [$status, $text] = Http::call($method, Routing::url($service) . $path, ServiceAuth::headers($caller, $user, $idempotencyKey), $body === null ? null : json_encode($body), 8);
+        [$status, $text] = Http::call($method, Routing::url($service) . $path, ServiceAuth::headers($caller, $service, $user, $idempotencyKey), $body === null ? null : json_encode($body), 8);
         if ($status === 0 || $status >= 500) {
             throw new ApiException(503, 'SERVICE_UNAVAILABLE', "{$service} is not reachable right now");
         }
