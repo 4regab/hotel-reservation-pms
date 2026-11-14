@@ -6,12 +6,8 @@
   var calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (!calm && 'IntersectionObserver' in window) {
     document.documentElement.classList.add('js');
-    var seen = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('is-in'); seen.unobserve(en.target); } });
-    }, { rootMargin: '0px 0px -10% 0px' });
-    document.querySelectorAll('[data-reveal]').forEach(function (el) { seen.observe(el); });
 
-    // Story words light up as the paragraph moves up the screen. Screen readers still get the plain sentence.
+    // Story words turn from grey to ink as the paragraph moves up the screen. Screen readers still get the plain sentence.
     document.querySelectorAll('[data-words]').forEach(function (p) {
       var text = p.textContent.trim();
       p.textContent = '';
@@ -39,7 +35,65 @@
       window.addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(paint); } }, { passive: true });
       paint();
     });
+
+    // Stay chapters: the section is pinned while the page scrolls four screens. Each next photograph is
+    // uncovered from its foot over the last and settles from a slight zoom; the panel shows its chapter.
+    // Screens under 600px tall keep the plain row of cards.
+    document.querySelectorAll('[data-chapters]').forEach(function (root) {
+      if (window.innerHeight < 600) return;
+      var box = root.querySelector('.chapters-box');
+      var list = root.querySelector('.chapters-list');
+      var items = [].slice.call(root.querySelectorAll('.chapter'));
+      var pics = items.map(function (li) { return li.querySelector('.chapter-pic'); });
+      var n = items.length;
+      var stage = document.createElement('div');
+      stage.className = 'chapters-stage';
+      var panel = document.createElement('div');
+      panel.className = 'chapters-panel';
+      var count = document.createElement('p');
+      count.className = 'chapter-count';
+      count.setAttribute('aria-hidden', 'true');
+      panel.appendChild(count);
+      pics.forEach(function (p) { stage.appendChild(p); });
+      panel.appendChild(list);
+      stage.appendChild(panel);
+      box.appendChild(stage);
+      root.classList.add('is-live');
+      var on = -1;
+      var pad = function (v) { return (v < 10 ? '0' : '') + v; };
+      var ease = function (t) { return 1 - Math.pow(1 - t, 3); };
+      function draw() {
+        ticking2 = false;
+        var r = root.getBoundingClientRect();
+        var p = Math.min(1, Math.max(0, -r.top / Math.max(1, r.height - window.innerHeight)));
+        var seg = 1 / n, k = 0;
+        pics.forEach(function (pic, i) {
+          var u = i === 0 ? 1 : Math.min(1, Math.max(0, (p - (i - 0.25) * seg) / (0.45 * seg)));
+          var e = ease(u);
+          pic.style.setProperty('--c', ((1 - e) * 100).toFixed(2) + '%');
+          pic.style.setProperty('--z', (1.06 - 0.06 * e).toFixed(4));
+          if (u >= 0.5) k = i;
+        });
+        if (k !== on) {
+          on = k;
+          items.forEach(function (li, i) { li.classList.toggle('is-on', i === k); });
+          count.textContent = pad(k + 1) + ' / ' + pad(n);
+        }
+      }
+      var ticking2 = false;
+      window.addEventListener('scroll', function () { if (!ticking2) { ticking2 = true; requestAnimationFrame(draw); } }, { passive: true });
+      draw();
+    });
   }
+
+  // Phone menu (a native <details>): Escape or a click outside closes it, and focus goes back to the menu button.
+  document.querySelectorAll('[data-menu]').forEach(function (menu) {
+    var btn = menu.querySelector('summary');
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && menu.open) { menu.open = false; btn.focus(); }
+    });
+    document.addEventListener('click', function (ev) { if (menu.open && !menu.contains(ev.target)) menu.open = false; });
+  });
 
   // Keep check-out after check-in in date pickers.
   document.querySelectorAll('[data-date-pair]').forEach(function (form) {

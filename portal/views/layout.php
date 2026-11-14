@@ -47,36 +47,50 @@ $profile = $staff ? '/staff/account' : '/account/profile';
 <body class="flex min-h-screen flex-col<?= $staff ? ' staff' : '' ?>">
 <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-full focus:bg-white focus:px-4 focus:py-2 focus:text-ink-950 focus:shadow-float">Skip to content</a>
 
-<?php if ($staff) { ?>
-<header class="no-print sticky top-0 z-30 border-b border-ink-200/70 bg-white/90 backdrop-blur">
-  <div class="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
-    <a href="/staff" class="flex shrink-0 items-center gap-3 rounded-lg">
-      <img src="/assets/brand/ma-hotel-logo-light.svg" alt="MA Hotel" class="hidden h-8 w-auto sm:block" width="124" height="32">
+<?php if ($staff) {
+    // One outline icon per staff area, so the sidebar can be scanned at a glance.
+    $navIcon = ['/staff' => 'home', '/staff/reception' => 'desk', '/staff/walk-in' => 'user', '/staff/guests' => 'users', '/staff/ota' => 'globe', '/staff/housekeeping' => 'bed', '/staff/maintenance' => 'wrench',
+        '/staff/finance' => 'cash', '/staff/reports' => 'chart', '/staff/approvals' => 'check', '/staff/settings' => 'sliders', '/staff/guests/duplicates' => 'users', '/staff/admin/users' => 'users',
+        '/staff/admin/audit' => 'list', '/staff/admin/health' => 'pulse', '/staff/admin/privacy' => 'shield'];
+    $sideLink = fn (array $l): string => '<a href="' . e($l[0]) . '" class="staff-nav-link"' . ($isActive($l) ? ' aria-current="page"' : '') . '>' . icon($navIcon[$l[0]] ?? 'list', 'size-[1.125rem] shrink-0') . e($l[1]) . '</a>';
+    $roleName = ['reception' => 'Reception', 'housekeeping' => 'Housekeeping', 'maintenance' => 'Maintenance', 'cashier' => 'Cashier', 'manager' => 'Manager', 'it' => 'IT and privacy', 'steward' => 'Data steward'][$role] ?? ucfirst($role);
+?>
+<header class="no-print sticky top-0 z-30 border-b border-ink-200 bg-white xl:hidden">
+  <div class="flex h-14 items-center justify-between gap-3 px-4 sm:px-6">
+    <a href="/staff" class="flex min-h-11 shrink-0 items-center gap-3 rounded-lg">
+      <img src="/assets/brand/ma-hotel-logo-light.svg" alt="MA Hotel" class="hidden h-7 w-auto sm:block" width="109" height="28">
       <img src="/assets/brand/ma-hotel-mark-light.svg" alt="MA Hotel" class="size-8 sm:hidden" width="32" height="32">
-      <span class="hidden border-l border-ink-200 pl-3 text-sm font-medium text-ink-600 md:inline">Staff</span>
     </a>
-    <div class="flex items-center gap-1 sm:gap-2">
-      <span class="badge badge-slate hidden sm:inline-flex"><?= e(ucfirst($role)) ?></span>
+    <div class="flex items-center gap-2">
+      <span class="badge badge-slate hidden sm:inline-flex"><?= e($roleName) ?></span>
       <a href="<?= e($profile) ?>" class="nav-link"<?= $path === $profile ? ' aria-current="page"' : '' ?>><?= $firstName ?></a>
       <?= form_open($c, '/logout') ?><button class="btn btn-secondary">Sign out</button></form>
     </div>
   </div>
-  <nav aria-label="Staff" class="no-scrollbar flex gap-1 overflow-x-auto border-t border-ink-100 px-4 py-2 sm:px-6 xl:hidden">
-    <?php foreach ($links as $l) { echo $navLink($l, 'staff-nav-link'); } ?>
+  <nav aria-label="Staff" class="no-scrollbar flex gap-1 overflow-x-auto border-t border-ink-100 px-4 py-2 sm:px-6">
+    <?php foreach ($links as $l) { echo $sideLink($l); } ?>
   </nav>
 </header>
 <div class="flex flex-1">
-  <aside class="no-print hidden w-60 shrink-0 border-r border-ink-200/70 bg-white/60 xl:block">
-    <nav aria-label="Staff sections" class="sticky top-16 flex flex-col gap-1 p-4">
-      <p class="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">Workspace</p>
-      <?php foreach ($links as $l) { echo $navLink($l, 'staff-nav-link'); } ?>
+  <aside class="no-print fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-ink-200 bg-white xl:flex">
+    <a href="/staff" class="flex h-16 shrink-0 items-center gap-3 border-b border-ink-100 px-5">
+      <img src="/assets/brand/ma-hotel-logo-light.svg" alt="MA Hotel" class="h-7 w-auto" width="109" height="28">
+      <span class="text-xs font-medium text-ink-600">Staff</span>
+    </a>
+    <nav aria-label="Staff sections" class="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
+      <?php foreach ($links as $l) { echo $sideLink($l); } ?>
     </nav>
+    <div class="flex items-center gap-3 border-t border-ink-100 p-4">
+      <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-ink-900 text-sm font-semibold text-white" aria-hidden="true"><?= e(preg_split('//u', html_entity_decode($firstName), 2, PREG_SPLIT_NO_EMPTY)[0] ?? '') ?></span>
+      <a href="<?= e($profile) ?>" class="min-w-0 flex-1 rounded-lg"><span class="block truncate text-sm font-medium text-ink-950"><?= $firstName ?></span><span class="block text-xs text-ink-600"><?= e($roleName) ?></span></a>
+      <?= form_open($c, '/logout') ?><button class="btn btn-ghost px-2.5" aria-label="Sign out" title="Sign out"><?= icon('logout', 'size-[1.125rem]') ?></button></form>
+    </div>
   </aside>
-  <div class="flex min-w-0 flex-1 flex-col">
+  <div class="flex min-w-0 flex-1 flex-col xl:pl-64">
 <?php } else { ?>
 <header class="no-print <?= $onPhoto ? 'on-photo absolute inset-x-2 top-2 z-30 text-white sm:inset-x-3 sm:top-3' : 'relative z-30' ?>">
   <div class="container-page flex items-center justify-between gap-3 py-4 <?= $onPhoto ? 'sm:py-5' : '' ?>">
-    <a href="/" class="flex shrink-0 items-center rounded-lg">
+    <a href="/" class="flex min-h-11 shrink-0 items-center rounded-lg">
       <img src="/assets/brand/<?= $onPhoto ? 'ma-hotel-logo-dark.svg' : 'ma-hotel-logo-light.svg' ?>" alt="MA Hotel" class="h-9 w-auto" width="140" height="36">
     </a>
     <nav aria-label="Main" class="hidden items-center gap-1 lg:flex">
@@ -91,7 +105,7 @@ $profile = $staff ? '/staff/account' : '/account/profile';
         <?= form_open($c, '/logout') ?><button class="btn btn-sm <?= $onPhoto ? 'btn-outline-light' : 'btn-secondary' ?>">Sign out</button></form>
       <?php } ?>
     </div>
-    <details class="relative lg:hidden">
+    <details class="relative lg:hidden" data-menu>
       <summary class="flex size-11 cursor-pointer list-none items-center justify-center rounded-full <?= $onPhoto ? 'bg-white/15 text-white hover:bg-white/25' : 'bg-white text-ink-900 ring-1 ring-ink-200 hover:bg-ink-50' ?>" aria-label="Menu"><?= icon('menu', 'size-6') ?></summary>
       <div class="absolute right-0 z-40 mt-2 w-72 rounded-3xl bg-white p-2 text-ink-900 shadow-float ring-1 ring-black/5">
         <nav aria-label="Mobile" class="flex flex-col gap-1">
@@ -124,9 +138,6 @@ $profile = $staff ? '/staff/account' : '/account/profile';
 </main>
 
 <?php if ($staff) { ?>
-<footer class="no-print border-t border-ink-200/70 px-4 py-4 text-xs text-ink-600 sm:px-6 lg:px-8">
-  MA Hotel staff workspace. Your role only shows the tools you need. Every action is recorded in the audit log.
-</footer>
   </div>
 </div>
 <?php } else { ?>
@@ -146,10 +157,10 @@ $profile = $staff ? '/staff/account' : '/account/profile';
     </div>
     <div class="md:col-span-4">
       <p class="font-semibold text-white">Explore</p>
-      <ul class="mt-3 space-y-2">
-        <li><a class="hover:text-white hover:underline" href="/rooms">Rooms and suites</a></li>
-        <li><a class="hover:text-white hover:underline" href="/search">Book a room</a></li>
-        <li><a class="hover:text-white hover:underline" href="<?= $role === 'guest' ? '/account/privacy' : '/login?next=/account/privacy' ?>">Your data and privacy</a></li>
+      <ul class="mt-2">
+        <li><a class="inline-flex min-h-11 items-center hover:text-white hover:underline" href="/rooms">Rooms and suites</a></li>
+        <li><a class="inline-flex min-h-11 items-center hover:text-white hover:underline" href="/search">Book a room</a></li>
+        <li><a class="inline-flex min-h-11 items-center hover:text-white hover:underline" href="<?= $role === 'guest' ? '/account/privacy' : '/login?next=/account/privacy' ?>">Your data and privacy</a></li>
       </ul>
     </div>
   </div>

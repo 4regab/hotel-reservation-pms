@@ -2,7 +2,7 @@
 $tabs = ['arrivals' => 'Arrivals', 'inhouse' => 'In house', 'departures' => 'Departures', 'upcoming' => 'Upcoming']; ?>
 <div class="container-page pb-4 pt-8 sm:pt-10">
   <div class="flex flex-wrap items-end justify-between gap-3">
-    <div><h1 class="page-title">Front desk</h1><p class="mt-1 text-ink-600"><?= e(d($today)) ?></p></div>
+    <div><h1 class="page-title">Front desk</h1><p class="mt-1 text-sm text-ink-600"><?= e(d($today)) ?></p></div>
     <a class="btn btn-primary" href="/staff/walk-in">New walk-in booking</a>
   </div>
 
@@ -12,9 +12,9 @@ $tabs = ['arrivals' => 'Arrivals', 'inhouse' => 'In house', 'departures' => 'Dep
   </form>
 
   <?php if ($q === '') { ?>
-    <nav aria-label="Front desk lists" class="mt-6 flex flex-wrap gap-2">
+    <nav aria-label="Front desk lists" class="tabs mt-6">
       <?php foreach ($tabs as $k => $label) { ?>
-        <a href="/staff/reception?tab=<?= e($k) ?>" class="btn btn-sm <?= $tab === $k ? 'btn-primary' : 'btn-secondary' ?>" <?= $tab === $k ? 'aria-current="page"' : '' ?>><?= e($label) ?><?php if (isset($counts[$k])) { ?> <span class="badge <?= $tab === $k ? 'bg-white text-ink-950' : 'badge-blue' ?>"><?= e($counts[$k]) ?></span><?php } ?></a>
+        <a href="/staff/reception?tab=<?= e($k) ?>" class="tab" <?= $tab === $k ? 'aria-current="page"' : '' ?>><?= e($label) ?><?php if (isset($counts[$k])) { ?> <span class="badge"><?= e($counts[$k]) ?></span><?php } ?></a>
       <?php } ?>
     </nav>
   <?php } else { ?><p class="mt-4 text-sm text-ink-600">Results for &ldquo;<?= e($q) ?>&rdquo;</p><?php } ?>
@@ -30,7 +30,7 @@ $tabs = ['arrivals' => 'Arrivals', 'inhouse' => 'In house', 'departures' => 'Dep
               <td class="whitespace-nowrap font-mono font-semibold"><a class="link" href="/staff/reservations/<?= e($r['reservationId']) ?>"><?= e($r['code']) ?></a></td>
               <td class="min-w-48 max-w-xs"><?= e($r['guestName']) ?><?php if ($r['specialRequests']) { ?><p class="text-xs text-ink-600">Request: <?= e(mb_strimwidth($r['specialRequests'], 0, 60, '...')) ?></p><?php } ?></td>
               <td><?= e($r['roomTypeName']) ?><?= $r['quantity'] > 1 ? ' x ' . e($r['quantity']) : '' ?><?php if (isset($stays[$r['reservationId']])) { ?><p class="text-xs font-semibold text-ink-950">Room <?= e($stays[$r['reservationId']]) ?></p><?php } ?></td>
-              <td class="whitespace-nowrap"><?= e(d($r['checkIn'])) ?> to <?= e(d($r['checkOut'])) ?></td>
+              <td class="whitespace-nowrap tabular-nums"><?= e(d($r['checkIn'])) ?> &rarr; <?= e(d($r['checkOut'])) ?></td>
               <td><?= badge($r['status']) ?><?php if ($late) { ?> <span class="badge badge-amber">Late</span><?php } ?></td>
               <td><?= badge($r['guarantee']) ?></td>
               <td><a class="btn btn-secondary btn-sm" href="/staff/reservations/<?= e($r['reservationId']) ?>">Open</a></td>

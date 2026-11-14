@@ -81,3 +81,42 @@ Earlier rounds of this redesign also fixed these issues, which the same checks f
 - Real email apps (Gmail, Outlook, Apple Mail). The emails were checked as rendered HTML in Chrome.
 - Browsers other than Chrome.
 - Pages showing live data from SQL Server. The end-to-end tests in CI do drive these pages over HTTP.
+
+## Round 3: landing page copy and motion, staff workspace
+
+The client asked for copy the length of real hotel sites, the look of the two Dribbble references, scroll animations, and a more professional staff workspace.
+
+**Copy length, measured.** Home pages of real hotel brands, counted with headless Chrome at 1440 px (visible words in the main area):
+
+| Site | Words | Median paragraph |
+| --- | --- | --- |
+| The Hoxton | 560 | 17 words |
+| YOTEL | 566 | 16 words |
+| Aman | 404 | 15 words |
+| citizenM | 905 | 11 words |
+| Raffles Makati | 1,339 | 19 words |
+| MA Hotel before | 544 | |
+| MA Hotel now | 738 | about 20 words |
+
+So the home page now sits in the same range, with paragraphs of 15 to 30 words like these sites: a two-sentence hero line, a lead under each section heading, a line for each of the four stay steps, and a closing sentence.
+
+**What changed**
+
+| # | Area | Change |
+| --- | --- | --- |
+| 1 | Home hero | Headline "A boutique hotel in Metro Manila" (two lines, was four). A 30-word line names the room mix and the night desk. Button "Find a room". |
+| 2 | Home story | The statement now turns from readable grey to ink as you scroll (was 18% opacity, which failed contrast). A row of four facts under it. |
+| 3 | Home rooms | Two tiles a row on a tablet with the Suite full width under them (was one tall photo a row). A lead line names the three room types. |
+| 4 | Home steps | Replaced the floating photos with a pinned photo story in four steps. |
+| 5 | Home FAQ | The side photo is cropped to the height of the questions instead of towering over them. |
+| 6 | Home close | A sentence under the headline about booking direct. |
+| 7 | Motion | Removed the fade-in of every section and the floating photos. Kept one hero entrance and the three scroll moments above. Hover lift 2 px (was 4), photo zoom 3% (was 4.5%). |
+| 8 | Phone menu | Escape and a click outside close it, and focus goes back to the menu button. |
+| 9 | Buttons and fields | One height: 48 px (44 px for small buttons). |
+| 10 | Staff shell | Fixed sidebar with icons, the person and Sign out at its foot; the top bar only below `xl`. Removed the footer sentence. |
+| 11 | Staff look | Grey page, sans-serif titles, navy main buttons, flat cards, quieter tables, 36 px desktop controls. |
+| 12 | Staff tabs | Front desk, finance and privacy lists use one segmented tab style (were orange and white pill buttons). |
+| 13 | Staff figures | Report figures sit in one joined strip; dashboard cards use the same label, value and note styles. |
+| 14 | Search | The "Check availability" button no longer shrinks to 24 px on phones. |
+
+All rendered pages were checked again at 375, 768 and 1280 px: no sideways scroll on any page.

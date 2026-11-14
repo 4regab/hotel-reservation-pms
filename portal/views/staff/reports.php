@@ -9,18 +9,18 @@ $kpi = function (string $name, string $value, string $target, ?bool $ok, string 
 <?php }; ?>
 <div class="container-page max-w-6xl pb-4 pt-8 sm:pt-10">
   <div class="flex flex-wrap items-end justify-between gap-3">
-    <div><h1 class="page-title">Reports</h1><p class="mt-1 text-ink-600">Read live from the booking, billing and room systems when you open this page. Generated <?= e(dt(gmdate('Y-m-d H:i:s'))) ?>. Never used to sell rooms.</p></div>
+    <div><h1 class="page-title">Reports</h1><p class="mt-1 text-sm text-ink-600">Read live from the booking, billing and room systems when you open this page. Generated <?= e(dt(gmdate('Y-m-d H:i:s'))) ?>. Never used to sell rooms.</p></div>
     <form method="get" action="/staff/reports" class="flex flex-wrap items-end gap-3"><?= field('From', 'from', 'date', $from) ?><?= field('To', 'to', 'date', $to) ?><button class="btn btn-secondary">Update</button></form>
   </div>
   <?php if ($unavailable) { ?><p class="alert alert-warn mt-4" role="alert">Some figures are missing because these systems did not answer: <?= e(implode(', ', $unavailable)) ?>.</p><?php } ?>
 
   <?php if ($occ) { $t = $occ['totals']; ?>
-    <ul class="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-5" aria-label="Key figures">
-      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-ink-600">Occupancy</p><p class="mt-1 whitespace-nowrap font-display text-2xl font-medium tracking-tight text-ink-950 sm:text-3xl"><?= e($pct($t['occupancy'])) ?></p><p class="text-xs text-ink-600"><?= e($t['roomNights']) ?> of <?= e($t['roomNightsAvailable']) ?> room-nights</p></li>
-      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-ink-600">ADR</p><p class="mt-1 whitespace-nowrap font-display text-xl font-medium tracking-tight text-ink-950 sm:text-3xl"><?= e(php_money($t['adrMinor'])) ?></p><p class="text-xs text-ink-600">average daily rate</p></li>
-      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-ink-600">RevPAR</p><p class="mt-1 whitespace-nowrap font-display text-xl font-medium tracking-tight text-ink-950 sm:text-3xl"><?= e(php_money($t['revparMinor'])) ?></p><p class="text-xs text-ink-600">revenue per available room</p></li>
-      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-ink-600">Room revenue</p><p class="mt-1 whitespace-nowrap font-display text-xl font-medium tracking-tight text-ink-950 sm:text-3xl"><?= e($php0((float) $t['revenueMinor'])) ?></p><p class="text-xs text-ink-600">booked nights in range</p></li>
-      <li class="card card-pad col-span-2 lg:col-span-1 2xl:col-span-1"><p class="text-xs font-semibold uppercase text-ink-600">Cash collected</p><p class="mt-1 whitespace-nowrap font-display text-xl font-medium tracking-tight text-ink-950 sm:text-3xl"><?= $rev ? e($php0((float) $rev['totals']['netMinor'])) : '-' ?></p><p class="text-xs text-ink-600">payments minus refunds<?= $rev ? ', to ' . e(d($rev['to'])) : '' ?></p></li>
+    <ul class="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-ink-200 bg-ink-200 lg:grid-cols-5" aria-label="Key figures">
+      <li class="bg-white p-4 sm:p-5"><p class="kpi-label">Occupancy</p><p class="kpi-value text-xl 2xl:text-2xl"><?= e($pct($t['occupancy'])) ?></p><p class="kpi-note"><?= e($t['roomNights']) ?> of <?= e($t['roomNightsAvailable']) ?> room-nights</p></li>
+      <li class="bg-white p-4 sm:p-5"><p class="kpi-label">ADR</p><p class="kpi-value text-xl 2xl:text-2xl"><?= e(php_money($t['adrMinor'])) ?></p><p class="kpi-note">average daily rate</p></li>
+      <li class="bg-white p-4 sm:p-5"><p class="kpi-label">RevPAR</p><p class="kpi-value text-xl 2xl:text-2xl"><?= e(php_money($t['revparMinor'])) ?></p><p class="kpi-note">revenue per available room</p></li>
+      <li class="bg-white p-4 sm:p-5"><p class="kpi-label">Room revenue</p><p class="kpi-value text-xl 2xl:text-2xl"><?= e($php0((float) $t['revenueMinor'])) ?></p><p class="kpi-note">booked nights in range</p></li>
+      <li class="col-span-2 bg-white p-4 sm:p-5 lg:col-span-1"><p class="kpi-label">Cash collected</p><p class="kpi-value text-xl 2xl:text-2xl"><?= $rev ? e($php0((float) $rev['totals']['netMinor'])) : '-' ?></p><p class="kpi-note">payments minus refunds<?= $rev ? ', to ' . e(d($rev['to'])) : '' ?></p></li>
     </ul>
 
     <?php

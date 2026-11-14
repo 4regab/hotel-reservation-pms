@@ -2,7 +2,7 @@
 $typeLabel = ['ACCESS' => 'Copy of data', 'CORRECTION' => 'Correction', 'DELETION' => 'Deletion']; ?>
 <div class="container-page max-w-5xl pb-4 pt-8 sm:pt-10">
   <h1 class="page-title">Privacy requests</h1>
-  <nav aria-label="Filter" class="mt-4 flex flex-wrap gap-2"><?php foreach ([''  => 'Open', 'COMPLETED' => 'Completed', 'REJECTED' => 'Declined'] as $k => $l) { ?><a class="btn btn-sm <?= $status === $k ? 'btn-primary' : 'btn-secondary' ?>" href="/staff/admin/privacy<?= $k !== '' ? '?status=' . e($k) : '' ?>"><?= e($l) ?></a><?php } ?></nav>
+  <nav aria-label="Filter" class="tabs mt-4"><?php foreach ([''  => 'Open', 'COMPLETED' => 'Completed', 'REJECTED' => 'Declined'] as $k => $l) { ?><a class="tab" href="/staff/admin/privacy<?= $k !== '' ? '?status=' . e($k) : '' ?>"<?= $status === $k ? ' aria-current="page"' : '' ?>><?= e($l) ?></a><?php } ?></nav>
   <?php if ($rows) { ?>
     <div class="table-wrap mt-4"><table class="table"><caption class="sr-only">Requests</caption>
       <thead><tr><th scope="col">Type</th><th scope="col">Person</th><th scope="col">Status</th><th scope="col">Filed</th><th scope="col">Answer due</th><th scope="col"><span class="sr-only">Open</span></th></tr></thead>

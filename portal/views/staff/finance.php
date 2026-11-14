@@ -3,7 +3,7 @@ $mgr = $c->role() === 'manager';
 $tabs = ['payments' => 'Payments', 'refunds' => 'Refunds', 'exports' => 'Accounting exports']; ?>
 <div class="container-page max-w-6xl pb-4 pt-8 sm:pt-10">
   <h1 class="page-title">Payments and finance</h1>
-  <nav aria-label="Finance sections" class="mt-4 flex flex-wrap gap-2"><?php foreach ($tabs as $k => $l) { ?><a class="btn btn-sm <?= $tab === $k ? 'btn-primary' : 'btn-secondary' ?>" href="/staff/finance?tab=<?= e($k) ?>" <?= $tab === $k ? 'aria-current="page"' : '' ?>><?= e($l) ?></a><?php } ?></nav>
+  <nav aria-label="Finance sections" class="tabs mt-4"><?php foreach ($tabs as $k => $l) { ?><a class="tab" href="/staff/finance?tab=<?= e($k) ?>" <?= $tab === $k ? 'aria-current="page"' : '' ?>><?= e($l) ?></a><?php } ?></nav>
 
 <?php if ($tab === 'payments') { ?>
   <form method="get" action="/staff/finance" class="mt-6 flex flex-wrap items-end gap-3"><input type="hidden" name="tab" value="payments">
