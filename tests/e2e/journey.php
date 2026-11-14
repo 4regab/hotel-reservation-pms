@@ -18,7 +18,10 @@ $ci = $today;
 $co = (new DateTimeImmutable($today))->modify('+2 day')->format('Y-m-d');
 [$s, $av] = $guest->get("/v1/availability?checkIn={$ci}&checkOut={$co}&quantity=1");
 check($s === 200 && count($av['options']) === 3, 'availability lists 3 room types');
-$opt = array_values(array_filter($av['options'], fn ($o) => $o['name'] === 'Standard'))[0];
+// Use a room type that is for sale tonight AND has a ready room, so the test does not depend on how busy the demo data is.
+$ready = admin('roomops')->query("SELECT DISTINCT room_type_id FROM room WHERE readiness = 'READY'")->fetchAll(PDO::FETCH_COLUMN);
+$opt = array_values(array_filter($av['options'], fn ($o) => $o['quoteId'] !== null && in_array($o['roomTypeId'], $ready, true)))[0] ?? null;
+check($opt !== null, 'a room type is for sale and has a ready room');
 check($opt['quoteId'] !== null && $opt['totalMinor'] === 2 * $opt['nightlyMinor'], 'quote is nightly x nights');
 
 [$s, $hold] = $guest->post('/v1/reservations', ['quoteId' => $opt['quoteId'], 'roomTypeId' => $opt['roomTypeId'], 'checkIn' => $ci, 'checkOut' => $co, 'quantity' => 1], 'k-' . uuid());
