@@ -152,6 +152,11 @@ final class ReservationController
                 $args[] = $q[$k];
             }
         }
+        if (!empty($q['ids'])) {
+            $ids = array_slice(array_values(array_filter(explode(',', (string) $q['ids']), fn ($i) => Uuid::isValid($i))), 0, 100);
+            $where[] = $ids === [] ? '1=0' : 'r.reservation_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')';
+            array_push($args, ...$ids);
+        }
         if (!empty($q['guaranteeRequested'])) {
             $where[] = "r.guarantee_requested = 1 AND r.status = 'HELD' AND r.hold_expires_at > UTC_TIMESTAMP()";
         }
