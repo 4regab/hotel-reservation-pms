@@ -1,6 +1,6 @@
 <?php /** @var Portal\Web\Ctx $c @var array $made @var string $email @var string $intro */ ?>
-<div class="container-page max-w-2xl py-8">
-  <h1 class="text-3xl font-bold">Hand these over now</h1>
+<div class="container-page max-w-2xl pb-4 pt-8 sm:pt-10">
+  <h1 class="page-title">Hand these over now</h1>
   <p class="alert alert-warn mt-4" role="alert"><?= e($intro) ?> This page shows the secrets <strong>once</strong>. They are not stored in readable form and cannot be shown again.</p>
   <dl class="card card-pad mt-6 space-y-4">
     <div><dt class="label">Sign-in email</dt><dd class="break-all font-mono"><?= e($email) ?></dd></div>

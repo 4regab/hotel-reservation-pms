@@ -1,9 +1,9 @@
 <?php /** @var Portal\Web\Ctx $c @var array $r @var ?array $folio @var ?array $stay @var array $ready @var ?array $override @var array $cancel @var bool $noShowDue @var string $startedAt */
 $role = $c->role(); $id = $r['reservationId']; $today = today();
 $isFront = in_array($role, ['reception', 'manager'], true); ?>
-<div class="container-page max-w-5xl py-8">
-  <nav aria-label="Breadcrumb" class="text-sm text-slate-600"><a class="link" href="/staff/reception">Front desk</a> <span aria-hidden="true">/</span> <?= e($r['code']) ?></nav>
-  <h1 class="mt-2 text-3xl font-bold">Booking <?= e($r['code']) ?> <?= badge($r['status']) ?></h1>
+<div class="container-page max-w-5xl pb-4 pt-8 sm:pt-10">
+  <nav aria-label="Breadcrumb" class="text-sm text-ink-600"><a class="link" href="/staff/reception">Front desk</a> <span aria-hidden="true">/</span> <?= e($r['code']) ?></nav>
+  <h1 class="page-title mt-2">Booking <?= e($r['code']) ?> <?= badge($r['status']) ?></h1>
 
   <div class="mt-6 grid gap-6 lg:grid-cols-3">
     <div class="space-y-6 lg:col-span-2">
@@ -11,12 +11,12 @@ $isFront = in_array($role, ['reception', 'manager'], true); ?>
       <section class="card card-pad" aria-labelledby="g-h">
         <h2 id="g-h" class="text-lg font-semibold">Guest</h2>
         <dl class="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-          <div><dt class="text-slate-600">Name</dt><dd class="font-medium"><?= e($r['guestName']) ?></dd></div>
-          <div><dt class="text-slate-600">Source</dt><dd><?= badge($r['source']) ?></dd></div>
-          <?php if (isset($r['guestEmail'])) { ?><div><dt class="text-slate-600">Email</dt><dd class="break-all"><?= e($r['guestEmail']) ?></dd></div><div><dt class="text-slate-600">Phone</dt><dd><?= e($r['guestPhone']) ?></dd></div><?php } ?>
-          <?php if ($stay) { ?><div><dt class="text-slate-600">Checked in</dt><dd><?= e(dt($stay['checkedInAt'])) ?> with <?= e(str_replace('_', ' ', strtolower($stay['identityDocType']))) ?></dd></div>
-            <div><dt class="text-slate-600">Room</dt><dd class="font-semibold"><?= e(implode(', ', array_column($stay['rooms'], 'roomNumber'))) ?></dd></div>
-            <?php if ($stay['earlyOverride']) { ?><div class="sm:col-span-2"><dt class="text-slate-600">Early arrival approved</dt><dd><?= e($stay['earlyOverride']) ?></dd></div><?php } ?><?php } ?>
+          <div><dt class="text-ink-600">Name</dt><dd class="font-medium"><?= e($r['guestName']) ?></dd></div>
+          <div><dt class="text-ink-600">Source</dt><dd><?= badge($r['source']) ?></dd></div>
+          <?php if (isset($r['guestEmail'])) { ?><div><dt class="text-ink-600">Email</dt><dd class="break-all"><?= e($r['guestEmail']) ?></dd></div><div><dt class="text-ink-600">Phone</dt><dd><?= e($r['guestPhone']) ?></dd></div><?php } ?>
+          <?php if ($stay) { ?><div><dt class="text-ink-600">Checked in</dt><dd><?= e(dt($stay['checkedInAt'])) ?> with <?= e(str_replace('_', ' ', strtolower($stay['identityDocType']))) ?></dd></div>
+            <div><dt class="text-ink-600">Room</dt><dd class="font-semibold"><?= e(implode(', ', array_column($stay['rooms'], 'roomNumber'))) ?></dd></div>
+            <?php if ($stay['earlyOverride']) { ?><div class="sm:col-span-2"><dt class="text-ink-600">Early arrival approved</dt><dd><?= e($stay['earlyOverride']) ?></dd></div><?php } ?><?php } ?>
         </dl>
       </section>
 
@@ -24,10 +24,10 @@ $isFront = in_array($role, ['reception', 'manager'], true); ?>
         <section class="card card-pad" aria-labelledby="f-h">
           <h2 id="f-h" class="text-lg font-semibold">Bill <?= badge($folio['folioStatus'] ?? 'OPEN') ?></h2>
           <dl class="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            <div><dt class="text-slate-600">Total</dt><dd class="font-semibold"><?= e(php_money($folio['totalMinor'])) ?></dd></div>
-            <div><dt class="text-slate-600">Paid</dt><dd class="font-semibold"><?= e(php_money($folio['paidMinor'])) ?></dd></div>
-            <div><dt class="text-slate-600">Refunded</dt><dd class="font-semibold"><?= e(php_money($folio['refundedMinor'])) ?></dd></div>
-            <div><dt class="text-slate-600">Balance</dt><dd class="text-lg font-bold <?= $folio['balanceMinor'] > 0 ? 'text-red-800' : 'text-emerald-800' ?>"><?= e(php_money($folio['balanceMinor'])) ?></dd></div>
+            <div><dt class="text-ink-600">Total</dt><dd class="font-semibold"><?= e(php_money($folio['totalMinor'])) ?></dd></div>
+            <div><dt class="text-ink-600">Paid</dt><dd class="font-semibold"><?= e(php_money($folio['paidMinor'])) ?></dd></div>
+            <div><dt class="text-ink-600">Refunded</dt><dd class="font-semibold"><?= e(php_money($folio['refundedMinor'])) ?></dd></div>
+            <div><dt class="text-ink-600">Balance</dt><dd class="text-lg font-bold <?= $folio['balanceMinor'] > 0 ? 'text-red-800' : 'text-emerald-800' ?>"><?= e(php_money($folio['balanceMinor'])) ?></dd></div>
           </dl>
           <?php if (($folio['folioOpen'] ?? false) && in_array($role, ['cashier', 'manager'], true)) { ?>
             <?= form_open($c, '/staff/reservations/' . $id . '/charge', 'mt-4 grid gap-3 sm:grid-cols-[1fr_10rem_auto] sm:items-end') ?>
@@ -43,7 +43,7 @@ $isFront = in_array($role, ['reception', 'manager'], true); ?>
     <div class="space-y-6">
       <?php if ($r['status'] === 'HELD' && $isFront) { ?>
         <section class="card card-pad" aria-labelledby="h-h"><h2 id="h-h" class="text-lg font-semibold">Hold (10 minutes)</h2>
-          <p class="mt-1 text-sm text-slate-600">Expires <?= e(dt($r['holdExpiresAt'])) ?>.</p>
+          <p class="mt-1 text-sm text-ink-600">Expires <?= e(dt($r['holdExpiresAt'])) ?>.</p>
           <?= form_open($c, '/staff/reservations/' . $id . '/onsite-payment', 'mt-3 space-y-3') ?>
             <?= select_field('Payment taken at the desk', 'method', ['CASH' => 'Cash', 'CARD_TERMINAL' => 'Card terminal', 'GCASH' => 'GCash'], 'CASH') ?>
             <button class="btn btn-primary w-full">Record <?= e(php_money($r['amountMinor'])) ?> payment</button>
@@ -71,7 +71,7 @@ $isFront = in_array($role, ['reception', 'manager'], true); ?>
               <?= checkbox_field('I checked the ID and it matches the guest', 'identityVerified', false, 'required') ?>
               <fieldset><legend class="label">Room<?= $r['quantity'] > 1 ? 's (pick ' . e($r['quantity']) . ')' : '' ?></legend>
                 <?php if ($ready) { ?><div class="grid grid-cols-3 gap-2"><?php foreach ($ready as $i => $rm) { ?>
-                  <label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-2 text-sm"><input type="<?= $r['quantity'] > 1 ? 'checkbox' : 'radio' ?>" name="roomIds[]" value="<?= e($rm['roomId']) ?>" <?= $i < (int) $r['quantity'] && $r['quantity'] == 1 && $i === 0 ? 'checked' : '' ?>> <span><strong><?= e($rm['roomNumber']) ?></strong><span class="block text-xs text-slate-600"><?= e($rm['view']) ?></span></span></label>
+                  <label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-ink-300 px-2 text-sm"><input type="<?= $r['quantity'] > 1 ? 'checkbox' : 'radio' ?>" name="roomIds[]" value="<?= e($rm['roomId']) ?>" <?= $i < (int) $r['quantity'] && $r['quantity'] == 1 && $i === 0 ? 'checked' : '' ?>> <span><strong><?= e($rm['roomNumber']) ?></strong><span class="block text-xs text-ink-600"><?= e($rm['view']) ?></span></span></label>
                 <?php } ?></div><p class="hint">Leave all unticked to let the system pick.</p>
                 <?php } else { ?><p class="alert alert-warn text-sm">No ready room of this type right now. Ask housekeeping.</p><?php } ?></fieldset>
               <?php if ($early && !$approved && $role === 'manager') { echo textarea_field('Manager reason for early check-in', 'overrideReason', '', 'required maxlength="200"'); } ?>
@@ -94,7 +94,7 @@ $isFront = in_array($role, ['reception', 'manager'], true); ?>
       <?php if ($isFront && ($cancel['allowed'] || $noShowDue)) { ?>
         <section class="card card-pad" aria-labelledby="x-h"><h2 id="x-h" class="text-lg font-semibold">Cancel or no-show</h2>
           <?php if ($cancel['allowed']) { ?>
-            <p class="mt-2 text-sm text-slate-700"><?= $r['status'] === 'HELD' ? 'No charge for a hold.' : ($cancel['free'] ? 'Free cancellation still applies.' : 'Free cancellation ended. Penalty: ' . e(php_money($cancel['penaltyMinor'])) . '.') ?></p>
+            <p class="mt-2 text-sm text-ink-700"><?= $r['status'] === 'HELD' ? 'No charge for a hold.' : ($cancel['free'] ? 'Free cancellation still applies.' : 'Free cancellation ended. Penalty: ' . e(php_money($cancel['penaltyMinor'])) . '.') ?></p>
             <?= form_open($c, '/staff/reservations/' . $id . '/cancel', 'mt-3 space-y-3', 'data-confirm="Cancel booking ' . e($r['code']) . '?"') ?>
               <?php if ($role === 'manager' && !$cancel['free'] && $r['status'] === 'CONFIRMED') { echo checkbox_field('Waive the penalty (manager)', 'waive'); } ?>
               <button class="btn btn-danger w-full">Cancel booking</button>
