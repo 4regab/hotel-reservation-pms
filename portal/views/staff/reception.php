@@ -1,8 +1,8 @@
 <?php /** @var Portal\Web\Ctx $c @var array $rows @var string $tab @var string $q @var array $counts @var array $stays @var string $today */
 $tabs = ['arrivals' => 'Arrivals', 'inhouse' => 'In house', 'departures' => 'Departures', 'upcoming' => 'Upcoming']; ?>
-<div class="container-page py-8">
+<div class="container-page pb-4 pt-8 sm:pt-10">
   <div class="flex flex-wrap items-end justify-between gap-3">
-    <div><h1 class="text-3xl font-bold">Front desk</h1><p class="mt-1 text-slate-600"><?= e(d($today)) ?></p></div>
+    <div><h1 class="page-title">Front desk</h1><p class="mt-1 text-ink-600"><?= e(d($today)) ?></p></div>
     <a class="btn btn-primary" href="/staff/walk-in">New walk-in booking</a>
   </div>
 
@@ -14,10 +14,10 @@ $tabs = ['arrivals' => 'Arrivals', 'inhouse' => 'In house', 'departures' => 'Dep
   <?php if ($q === '') { ?>
     <nav aria-label="Front desk lists" class="mt-6 flex flex-wrap gap-2">
       <?php foreach ($tabs as $k => $label) { ?>
-        <a href="/staff/reception?tab=<?= e($k) ?>" class="btn btn-sm <?= $tab === $k ? 'btn-primary' : 'btn-secondary' ?>" <?= $tab === $k ? 'aria-current="page"' : '' ?>><?= e($label) ?><?php if (isset($counts[$k])) { ?> <span class="badge <?= $tab === $k ? 'bg-white text-brand-900' : 'badge-blue' ?>"><?= e($counts[$k]) ?></span><?php } ?></a>
+        <a href="/staff/reception?tab=<?= e($k) ?>" class="btn btn-sm <?= $tab === $k ? 'btn-primary' : 'btn-secondary' ?>" <?= $tab === $k ? 'aria-current="page"' : '' ?>><?= e($label) ?><?php if (isset($counts[$k])) { ?> <span class="badge <?= $tab === $k ? 'bg-white text-ink-950' : 'badge-blue' ?>"><?= e($counts[$k]) ?></span><?php } ?></a>
       <?php } ?>
     </nav>
-  <?php } else { ?><p class="mt-4 text-sm text-slate-600">Results for &ldquo;<?= e($q) ?>&rdquo;</p><?php } ?>
+  <?php } else { ?><p class="mt-4 text-sm text-ink-600">Results for &ldquo;<?= e($q) ?>&rdquo;</p><?php } ?>
 
   <?php if ($rows) { ?>
     <div class="table-wrap mt-4">
@@ -28,8 +28,8 @@ $tabs = ['arrivals' => 'Arrivals', 'inhouse' => 'In house', 'departures' => 'Dep
           <?php foreach ($rows as $r) { $late = $r['status'] === 'CONFIRMED' && $r['checkIn'] < $today; ?>
             <tr>
               <td class="whitespace-nowrap font-mono font-semibold"><a class="link" href="/staff/reservations/<?= e($r['reservationId']) ?>"><?= e($r['code']) ?></a></td>
-              <td class="min-w-48 max-w-xs"><?= e($r['guestName']) ?><?php if ($r['specialRequests']) { ?><p class="text-xs text-slate-600">Request: <?= e(mb_strimwidth($r['specialRequests'], 0, 60, '...')) ?></p><?php } ?></td>
-              <td><?= e($r['roomTypeName']) ?><?= $r['quantity'] > 1 ? ' x ' . e($r['quantity']) : '' ?><?php if (isset($stays[$r['reservationId']])) { ?><p class="text-xs font-semibold text-brand-900">Room <?= e($stays[$r['reservationId']]) ?></p><?php } ?></td>
+              <td class="min-w-48 max-w-xs"><?= e($r['guestName']) ?><?php if ($r['specialRequests']) { ?><p class="text-xs text-ink-600">Request: <?= e(mb_strimwidth($r['specialRequests'], 0, 60, '...')) ?></p><?php } ?></td>
+              <td><?= e($r['roomTypeName']) ?><?= $r['quantity'] > 1 ? ' x ' . e($r['quantity']) : '' ?><?php if (isset($stays[$r['reservationId']])) { ?><p class="text-xs font-semibold text-ink-950">Room <?= e($stays[$r['reservationId']]) ?></p><?php } ?></td>
               <td class="whitespace-nowrap"><?= e(d($r['checkIn'])) ?> to <?= e(d($r['checkOut'])) ?></td>
               <td><?= badge($r['status']) ?><?php if ($late) { ?> <span class="badge badge-amber">Late</span><?php } ?></td>
               <td><?= badge($r['guarantee']) ?></td>
@@ -40,6 +40,6 @@ $tabs = ['arrivals' => 'Arrivals', 'inhouse' => 'In house', 'departures' => 'Dep
       </table>
     </div>
   <?php } else { ?>
-    <div class="card card-pad mt-4 text-center text-slate-700"><?= $q !== '' ? 'No bookings match that search.' : 'Nothing here right now.' ?></div>
+    <div class="empty mt-4"><?= $q !== '' ? 'No bookings match that search.' : 'Nothing here right now.' ?></div>
   <?php } ?>
 </div>

@@ -1,6 +1,6 @@
 asyncapi: 2.6.0
 info:
-  title: HarborLight Hotels - Service Events
+  title: MA Hotel - Service Events
   version: 2.0.0
   description: |
     Every service saves a change and its event in ONE local transaction (transactional outbox). A scheduled dispatcher delivers each event

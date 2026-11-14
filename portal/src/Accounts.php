@@ -280,6 +280,6 @@ final class Accounts
 
     public static function otpauth(string $email, string $secret): string
     {
-        return 'otpauth://totp/' . rawurlencode('HarborLight:' . $email) . '?secret=' . $secret . '&issuer=HarborLight&digits=6&period=30';
+        return 'otpauth://totp/' . rawurlencode('MA Hotel:' . $email) . '?secret=' . $secret . '&issuer=' . rawurlencode('MA Hotel') . '&digits=6&period=30';
     }
 }

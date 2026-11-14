@@ -1,7 +1,7 @@
 <?php /** @var Portal\Web\Ctx $c @var array $feed @var array $f */ ?>
-<div class="container-page max-w-6xl py-8">
-  <h1 class="text-3xl font-bold">Audit log</h1>
-  <p class="mt-1 text-slate-600">Who did what, newest first, from all four systems. Entries cannot be edited or deleted. No contact or card details are recorded here.</p>
+<div class="container-page max-w-6xl pb-4 pt-8 sm:pt-10">
+  <h1 class="page-title">Audit log</h1>
+  <p class="mt-1 text-ink-600">Who did what, newest first, from all four systems. Entries cannot be edited or deleted. No contact or card details are recorded here.</p>
   <form method="get" action="/staff/admin/audit" class="card card-pad mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end" role="search">
     <?= field('Action starts with', 'action', 'text', $f['action'], 'placeholder="refund. or user. or stay."') ?>
     <?= field('From', 'from', 'date', $f['from']) ?><?= field('To', 'to', 'date', $f['to']) ?>
@@ -16,5 +16,5 @@
           <td class="text-xs"><?= e($r['targetType']) ?> <span class="font-mono"><?= e(substr((string) $r['targetId'], 0, 8)) ?></span></td>
           <td class="max-w-xs break-words text-xs"><?= $r['detail'] ? e(json_encode($r['detail'], JSON_UNESCAPED_SLASHES)) : '' ?></td><td><span class="badge badge-slate"><?= e($r['source']) ?></span></td></tr>
       <?php } ?></tbody></table></div>
-  <?php } else { ?><div class="card card-pad mt-4 text-center">No entries match.</div><?php } ?>
+  <?php } else { ?><div class="empty mt-4">No entries match.</div><?php } ?>
 </div>

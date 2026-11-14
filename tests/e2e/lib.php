@@ -59,7 +59,7 @@ final class Client
         return $this->req('POST', $p, $b, $idem ? ['Idempotency-Key: ' . $idem] : []);
     }
 
-    public function login(string $email, string $password = 'harborlight-demo', ?string $totpSecret = null): void
+    public function login(string $email, string $password = 'ma-hotel-demo', ?string $totpSecret = null): void
     {
         $b = ['email' => $email, 'password' => $password];
         if ($totpSecret !== null) {
@@ -79,7 +79,7 @@ function base(): string
 function staff(string $role): Client
 {
     $c = new Client(base());
-    $c->login("{$role}@example.test", getenv('DEMO_PASSWORD') ?: 'harborlight-demo', getenv('DEMO_TOTP_SECRET') ?: 'JBSWY3DPEHPK3PXP');
+    $c->login("{$role}@example.test", getenv('DEMO_PASSWORD') ?: 'ma-hotel-demo', getenv('DEMO_TOTP_SECRET') ?: 'JBSWY3DPEHPK3PXP');
     return $c;
 }
 
@@ -149,7 +149,13 @@ function svcCall(string $svc, string $method, string $path, string $role, string
 /** Far-future date pair that no other test or demo data uses. */
 function freshStay(int $nights = 1): array
 {
-    $start = (new DateTimeImmutable(Lib\Dates::manilaToday()))->modify('+' . random_int(400, 900) . ' day');
+    // Never hand out the same start twice in one run: a repeat would see the holds an earlier check left on those dates.
+    static $used = [];
+    do {
+        $offset = random_int(400, 900);
+    } while (isset($used[$offset]));
+    $used[$offset] = true;
+    $start = (new DateTimeImmutable(Lib\Dates::manilaToday()))->modify('+' . $offset . ' day');
     return [$start->format('Y-m-d'), $start->modify("+{$nights} day")->format('Y-m-d')];
 }
 

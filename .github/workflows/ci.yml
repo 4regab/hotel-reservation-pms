@@ -96,7 +96,7 @@ jobs:
       - name: The site answers
         run: |
           curl -fsS http://127.0.0.1:8080/healthz
-          curl -fsS http://127.0.0.1:8080/ | grep -q "HarborLight"
+          curl -fsS http://127.0.0.1:8080/ | grep -q "MA Hotel"
           curl -fsS http://127.0.0.1:8080/rooms | grep -q "Deluxe"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/internal/events)" = "404"
       - name: Show logs on failure

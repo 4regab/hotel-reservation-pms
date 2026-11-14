@@ -1,8 +1,8 @@
 <?php /** @var Portal\Web\Ctx $c @var array $accounts @var string $role @var string $q @var string $me */
 $roles = ['reception' => 'Reception', 'housekeeping' => 'Housekeeping', 'maintenance' => 'Maintenance', 'cashier' => 'Cashier / finance', 'manager' => 'Manager', 'it' => 'IT / privacy lead', 'steward' => 'Data steward']; ?>
-<div class="container-page max-w-6xl py-8">
-  <h1 class="text-3xl font-bold">Users and roles</h1>
-  <p class="mt-1 text-slate-600">Every change here is written to the audit log. Role changes and disabling sign the person out everywhere.</p>
+<div class="container-page max-w-6xl pb-4 pt-8 sm:pt-10">
+  <h1 class="page-title">Users and roles</h1>
+  <p class="mt-1 text-ink-600">Every change here is written to the audit log. Role changes and disabling sign the person out everywhere.</p>
 
   <details class="card card-pad mt-6" <?= $accounts ? '' : 'open' ?>>
     <summary class="cursor-pointer text-lg font-semibold">Create a staff account</summary>
@@ -27,7 +27,7 @@ $roles = ['reception' => 'Reception', 'housekeeping' => 'Housekeeping', 'mainten
     <tbody>
       <?php foreach ($accounts as $a) { $self = $a['account_id'] === $me; $staff = $a['role'] !== 'guest'; ?>
         <tr>
-          <td><p class="font-medium"><?= e($a['full_name']) ?><?= $self ? ' (you)' : '' ?></p><p class="break-all text-xs text-slate-600"><?= e($a['email']) ?></p></td>
+          <td><p class="font-medium"><?= e($a['full_name']) ?><?= $self ? ' (you)' : '' ?></p><p class="break-all text-xs text-ink-600"><?= e($a['email']) ?></p></td>
           <td><?= e(ucfirst($a['role'])) ?></td>
           <td><?= (int) $a['active'] ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Disabled</span>' ?><?php if ($a['locked_until'] && strtotime($a['locked_until'] . ' UTC') > time()) { ?> <span class="badge badge-amber">Locked</span><?php } ?></td>
           <td class="whitespace-nowrap"><?= e($a['last_login_at'] ? dt($a['last_login_at']) : 'never') ?></td>
@@ -45,5 +45,5 @@ $roles = ['reception' => 'Reception', 'housekeeping' => 'Housekeeping', 'mainten
       <?php } ?>
     </tbody>
   </table></div>
-  <?php if (!$accounts) { ?><p class="card card-pad mt-4 text-center">No accounts match.</p><?php } ?>
+  <?php if (!$accounts) { ?><p class="empty mt-4">No accounts match.</p><?php } ?>
 </div>

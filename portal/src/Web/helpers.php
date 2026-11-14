@@ -88,8 +88,8 @@ function textarea_field(string $label, string $name, string $value = '', string 
 function checkbox_field(string $label, string $name, bool $checked = false, string $extra = ''): string
 {
     $id = 'f-' . preg_replace('/[^a-z0-9]+/i', '-', $name);
-    return '<div class="flex items-start gap-3"><input class="mt-1 size-5 rounded border-slate-400 text-brand-700" type="checkbox" id="' . e($id) . '" name="' . e($name) . '" value="1"' . ($checked ? ' checked' : '') . ' ' . $extra . '>'
-        . '<label for="' . e($id) . '" class="text-sm text-slate-800">' . e($label) . '</label></div>';
+    return '<div class="flex items-start gap-3"><input class="mt-0.5 size-5 shrink-0 rounded accent-clay-700" type="checkbox" id="' . e($id) . '" name="' . e($name) . '" value="1"' . ($checked ? ' checked' : '') . ' ' . $extra . '>'
+        . '<label for="' . e($id) . '" class="text-sm text-ink-800">' . e($label) . '</label></div>';
 }
 
 /** Small inline icons (outline style, drawn here so no icon font or CDN is needed). */
@@ -113,6 +113,11 @@ function icon(string $name, string $class = 'size-5'): string
         'sparkle' => 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3zM18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z',
         'phone' => 'M6.75 2.25h10.5a1.5 1.5 0 011.5 1.5v16.5a1.5 1.5 0 01-1.5 1.5H6.75a1.5 1.5 0 01-1.5-1.5V3.75a1.5 1.5 0 011.5-1.5zM11.25 18.75h1.5',
         'wifi' => 'M8.4 15.4a5 5 0 017.2 0M5.3 12.3a9.4 9.4 0 0113.4 0M2.2 9.2a13.8 13.8 0 0119.6 0M12 19.2h.01',
+        'search' => 'M21 21l-5.2-5.2M17.25 10.5a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z',
+        'arrow' => 'M7 17L17 7M8.25 7H17v8.75',
+        'pin' => 'M12 21s-6.75-5.4-6.75-11.25a6.75 6.75 0 0113.5 0C18.75 15.6 12 21 12 21zM12 12.25a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
+        'expand' => 'M3.75 8.25V3.75h4.5M20.25 8.25V3.75h-4.5M3.75 15.75v4.5h4.5M20.25 15.75v4.5h-4.5',
+        'users' => 'M15 19.5a6 6 0 00-12 0M9 11.25a3.75 3.75 0 100-7.5 3.75 3.75 0 000 7.5zM21 19.5a5.25 5.25 0 00-4.5-5.2M15.75 4.1a3.75 3.75 0 010 7.05',
     ];
     $p = $paths[$name] ?? $paths['check'];
     return '<svg class="' . e($class) . '" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="' . e($p) . '"/></svg>';

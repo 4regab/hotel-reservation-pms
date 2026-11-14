@@ -1,7 +1,7 @@
 <?php /** @var Portal\Web\Ctx $c @var array $form @var ?array $res @var ?string $error */ ?>
-<div class="container-page max-w-5xl py-8">
-  <h1 class="text-3xl font-bold">Walk-in booking</h1>
-  <p class="mt-1 text-slate-600">Find a room for a guest at the desk. The room is held for 10 minutes while you take payment.</p>
+<div class="container-page max-w-5xl pb-4 pt-8 sm:pt-10">
+  <h1 class="page-title">Walk-in booking</h1>
+  <p class="mt-1 text-ink-600">Find a room for a guest at the desk. The room is held for 10 minutes while you take payment.</p>
   <div class="card card-pad mt-4">
     <form action="/staff/walk-in" method="get" class="grid grid-cols-2 items-end gap-3 lg:grid-cols-[1fr_1fr_8rem_8rem_auto]" data-date-pair>
       <div><label class="label" for="w-in">Check-in</label><input class="input" id="w-in" name="checkIn" type="date" required min="<?= e(today()) ?>" value="<?= e($form['checkIn']) ?>" data-checkin></div>
@@ -17,8 +17,8 @@
       <?php foreach ($res['options'] as $o) { ?>
         <li class="card card-pad">
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <div><h2 class="text-lg font-semibold"><?= e($o['name']) ?> <span class="text-sm font-normal text-slate-600"><?= e($o['available']) ?> available</span></h2>
-              <p class="text-sm text-slate-700"><?= e(php_money($o['nightlyMinor'])) ?> per night &middot; <strong><?= e(php_money($o['totalMinor'])) ?></strong> for <?= e($res['nights']) ?> <?= $res['nights'] === 1 ? 'night' : 'nights' ?></p></div>
+            <div><h2 class="text-lg font-semibold"><?= e($o['name']) ?> <span class="text-sm font-normal text-ink-600"><?= e($o['available']) ?> available</span></h2>
+              <p class="text-sm text-ink-700"><?= e(php_money($o['nightlyMinor'])) ?> per night &middot; <strong><?= e(php_money($o['totalMinor'])) ?></strong> for <?= e($res['nights']) ?> <?= $res['nights'] === 1 ? 'night' : 'nights' ?></p></div>
             <?php if (!$o['quoteId']) { ?><span class="badge badge-red"><?= $o['fits'] ? 'Sold out' : 'Too small' ?></span><?php } ?>
           </div>
           <?php if ($o['quoteId']) { ?>

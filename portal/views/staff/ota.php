@@ -1,7 +1,7 @@
 <?php /** @var Portal\Web\Ctx $c @var array $partners @var array $types @var array $allotments @var array $imports */ $mgr = $c->role() === 'manager'; ?>
-<div class="container-page max-w-5xl py-8">
-  <h1 class="text-3xl font-bold">Travel partners</h1>
-  <p class="mt-1 text-slate-600">A manager sets rooms aside for each partner before the partner sells them. Importing a partner's booking file moves one reserved room to confirmed. A booking is never accepted without a reserved room.</p>
+<div class="container-page max-w-5xl pb-4 pt-8 sm:pt-10">
+  <h1 class="page-title">Travel partners</h1>
+  <p class="mt-1 text-ink-600">A manager sets rooms aside for each partner before the partner sells them. Importing a partner's booking file moves one reserved room to confirmed. A booking is never accepted without a reserved room.</p>
 
   <section class="mt-8" aria-labelledby="al-h"><h2 id="al-h" class="text-xl font-semibold">Allotments</h2>
     <?= form_open($c, '/staff/ota/allotments', 'card card-pad mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-5 lg:items-end') ?>
@@ -19,7 +19,7 @@
           <td><?= $a['status'] === 'APPROVED' || $a['status'] === 'RETURNED' ? e($a['usedNights']) . ' of ' . e($a['reservedNights']) . ' room-nights' : '-' ?></td><td><?= badge($a['status']) ?></td>
           <?php if ($mgr) { ?><td><?php if ($a['status'] === 'APPROVED') { echo form_open($c, '/staff/ota/allotments/' . $a['allotmentId'] . '/return', 'inline', 'data-confirm="Return the unused rooms to direct sales? The partner can no longer sell them."') . '<input type="hidden" name="back" value="/staff/ota"><button class="btn btn-secondary btn-sm">Return unused</button></form>'; } ?></td><?php } ?></tr>
       <?php } ?></tbody></table></div>
-    <?php } else { ?><p class="mt-3 text-sm text-slate-600">No allotments yet.</p><?php } ?>
+    <?php } else { ?><p class="mt-3 text-sm text-ink-600">No allotments yet.</p><?php } ?>
   </section>
 
   <section class="mt-10" aria-labelledby="imp-h"><h2 id="imp-h" class="text-xl font-semibold">Import bookings</h2>

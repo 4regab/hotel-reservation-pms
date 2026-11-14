@@ -1,4 +1,4 @@
-# HarborLight Hotels: nginx + PHP-FPM + SQL Server 2025 (Express).
+# MA Hotel: nginx + PHP-FPM + SQL Server 2025 (Express).
 #   cp .env.example .env     (then change every value that says change-me)
 #   docker compose up --build
 #   open http://localhost:8080

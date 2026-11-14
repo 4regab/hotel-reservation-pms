@@ -13,7 +13,7 @@ final class Charts
      * Vertical bars. @param list<array{label:string,value:float,muted?:bool,note?:string}> $bars
      * @param callable(float):string $fmt axis and tooltip formatter
      */
-    public static function bars(string $title, string $desc, array $bars, callable $fmt, ?float $max = null, string $color = '#0369a1', string $mutedColor = '#7dd3fc'): string
+    public static function bars(string $title, string $desc, array $bars, callable $fmt, ?float $max = null, string $color = '#3b5f8f', string $mutedColor = '#a0bbdb'): string
     {
         $w = 720;
         $h = 240;
@@ -37,8 +37,8 @@ final class Charts
             . '<title id="c-' . md5($title) . '-t">' . e($title) . '</title><desc id="c-' . md5($title) . '-d">' . e($desc) . '</desc>';
         for ($i = 0; $i <= 4; $i++) {
             $y = $t + $ph - ($ph * $i / 4);
-            $svg .= '<line x1="' . $l . '" x2="' . ($w - $r) . '" y1="' . round($y, 1) . '" y2="' . round($y, 1) . '" stroke="#e2e8f0" stroke-width="1"/>'
-                . '<text x="' . ($l - 6) . '" y="' . round($y + 4, 1) . '" text-anchor="end" font-size="12" fill="#475569">' . e($fmt($max * $i / 4)) . '</text>';
+            $svg .= '<line x1="' . $l . '" x2="' . ($w - $r) . '" y1="' . round($y, 1) . '" y2="' . round($y, 1) . '" stroke="#e6e8ef" stroke-width="1"/>'
+                . '<text x="' . ($l - 6) . '" y="' . round($y + 4, 1) . '" text-anchor="end" font-size="12" fill="#454f6e">' . e($fmt($max * $i / 4)) . '</text>';
         }
         $every = max(1, (int) ceil($n / 9));
         foreach ($bars as $i => $bar) {
@@ -47,14 +47,14 @@ final class Charts
             $y = $t + $ph - $bh;
             $svg .= '<rect x="' . round($x, 1) . '" y="' . round($y, 1) . '" width="' . round($bw, 1) . '" height="' . round($bh, 1) . '" rx="2" fill="' . (!empty($bar['muted']) ? $mutedColor : $color) . '"><title>' . e($bar['label'] . ': ' . $fmt((float) $bar['value']) . (isset($bar['note']) ? ' (' . $bar['note'] . ')' : '')) . '</title></rect>';
             if ($i % $every === 0) {
-                $svg .= '<text x="' . round($x + $bw / 2, 1) . '" y="' . ($h - 14) . '" text-anchor="middle" font-size="12" fill="#475569">' . e(self::shortLabel($bar['label'])) . '</text>';
+                $svg .= '<text x="' . round($x + $bw / 2, 1) . '" y="' . ($h - 14) . '" text-anchor="middle" font-size="12" fill="#454f6e">' . e(self::shortLabel($bar['label'])) . '</text>';
             }
         }
         return $svg . '</svg>';
     }
 
     /** Horizontal bars with the value written at the end. @param list<array{label:string,value:float}> $rows */
-    public static function hbars(string $title, string $desc, array $rows, callable $fmt, string $color = '#0369a1'): string
+    public static function hbars(string $title, string $desc, array $rows, callable $fmt, string $color = '#3b5f8f'): string
     {
         $w = 720;
         $rowH = 34;
@@ -65,9 +65,9 @@ final class Charts
         foreach ($rows as $i => $row) {
             $y = 4 + $i * $rowH;
             $bw = ($w - $l - 110) * ((float) $row['value'] / $max);
-            $svg .= '<text x="' . ($l - 8) . '" y="' . ($y + 19) . '" text-anchor="end" font-size="13" fill="#1e293b">' . e($row['label']) . '</text>'
+            $svg .= '<text x="' . ($l - 8) . '" y="' . ($y + 19) . '" text-anchor="end" font-size="13" fill="#283556">' . e($row['label']) . '</text>'
                 . '<rect x="' . $l . '" y="' . ($y + 4) . '" width="' . round(max(2, $bw), 1) . '" height="22" rx="3" fill="' . $color . '"/>'
-                . '<text x="' . round($l + max(2, $bw) + 8, 1) . '" y="' . ($y + 20) . '" font-size="13" font-weight="600" fill="#0f172a">' . e($fmt((float) $row['value'])) . '</text>';
+                . '<text x="' . round($l + max(2, $bw) + 8, 1) . '" y="' . ($y + 20) . '" font-size="13" font-weight="600" fill="#1f2b4d">' . e($fmt((float) $row['value'])) . '</text>';
         }
         return $svg . '</svg>';
     }

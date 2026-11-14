@@ -18,10 +18,10 @@ final class Pages
         $html = <<<HTML
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="csrf" content="{$e($csrf)}"><title>{$e($title)} - HarborLight Hotels</title>
+<meta name="csrf" content="{$e($csrf)}"><title>{$e($title)} - MA Hotel</title>
 <style>body{font:16px/1.5 system-ui,sans-serif;max-width:56rem;margin:0 auto;padding:1rem}nav{display:flex;gap:1rem;flex-wrap:wrap;justify-content:space-between;border-bottom:1px solid #ccc;padding-bottom:.5rem}
 input,select,button{font:inherit;padding:.4rem;margin:.2rem 0}label{display:block}pre{background:#f4f4f4;padding:.75rem;overflow:auto}.row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:end}fieldset{margin:1rem 0}</style></head>
-<body><nav><strong><a href="/">HarborLight Hotels &amp; Resorts</a></strong><span><a href="/staff">Staff</a> &middot; {$who}</span></nav>
+<body><nav><strong><a href="/">MA Hotel</a></strong><span><a href="/staff">Staff</a> &middot; {$who}</span></nav>
 <main><h1>{$e($title)}</h1>{$body}</main>
 <script nonce="{$nonce}">
 const csrf=document.querySelector('meta[name=csrf]').content;
