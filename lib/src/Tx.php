@@ -5,7 +5,7 @@ namespace Lib;
 
 final class Tx
 {
-    /** Run $fn in one InnoDB transaction; joins an already open one. Rolls back on any exception. */
+    /** Run $fn in one database transaction; joins an already open one. Rolls back on any exception. */
     public static function run(\PDO $pdo, callable $fn): mixed
     {
         if ($pdo->inTransaction()) {

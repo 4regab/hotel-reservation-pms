@@ -64,7 +64,7 @@ foreach ($services as $svc) {
     // ponytail: CHECK_POLICY OFF because the generated hex passwords fail Windows' character-mix rule; their length is what makes them strong.
     $login = "CREATE LOGIN {$ident($user)} WITH PASSWORD = {$text($pass)}, DEFAULT_DATABASE = {$ident($name)}, CHECK_POLICY = OFF";
     $admin->exec("IF SUSER_ID({$text($user)}) IS NULL EXEC({$text($login)}) ELSE ALTER LOGIN {$ident($user)} WITH PASSWORD = {$text($pass)}");
-    $admin->exec("IF USER_ID({$text($user)}) IS NULL CREATE USER {$ident($user)} FOR LOGIN {$ident($user)}");
+    $admin->exec("IF USER_ID({$text($user)}) IS NULL CREATE USER {$ident($user)} FOR LOGIN {$ident($user)} ELSE ALTER USER {$ident($user)} WITH LOGIN = {$ident($user)}");
     // Per-table grants so audit_log stays append-only (no UPDATE or DELETE) and schema_migrations is untouchable.
     $old = $admin->prepare("SELECT p.permission_name, s.name AS sch, o.name AS obj FROM sys.database_permissions p
                               JOIN sys.objects o ON o.object_id = p.major_id JOIN sys.schemas s ON s.schema_id = o.schema_id

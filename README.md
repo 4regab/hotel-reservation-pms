@@ -5,7 +5,7 @@ A working website and back office for **HarborLight Hotels & Resorts**, a fictio
 payments, partner bookings, reports and privacy requests from the same system.
 
 It is plain PHP 8.3 (no framework, no Composer packages), server-rendered pages with Tailwind CSS and a little vanilla
-JavaScript, MySQL 8, and nginx + PHP-FPM. The compiled CSS is committed, so nothing needs Node to run.
+JavaScript, Microsoft SQL Server 2025, and nginx + PHP-FPM. The compiled CSS is committed, so nothing needs Node to run.
 
 ![Landing page at 1280 px](docs/screenshots/landing-desktop-1280.png)
 
@@ -116,10 +116,11 @@ Never use these passwords or this authenticator secret anywhere real.
 
 ### Without Docker (development)
 
-You need PHP 8.3+ with `pdo_mysql`, and a MySQL 8 server.
+You need PHP 8.3+ with `pdo_sqlsrv` (Microsoft's driver, plus ODBC Driver 18), and SQL Server 2025 listening on TCP port 1433.
+On Windows, run the commands in Git Bash. An empty `DB_ADMIN_USER` signs in with your Windows account, which must be a SQL Server admin.
 
 ```bash
-export DB_ADMIN_PORT=3306 DB_ADMIN_USER=root           # a MySQL you can create databases in
+export DB_ADMIN_USER=sa DB_ADMIN_PASS=...               # only if you do not sign in with Windows; a login that can create databases
 bash scripts/dev-stack.sh start                         # migrate, seed demo data, start the 4 services and the job loop
 open http://127.0.0.1:8100
 bash scripts/dev-stack.sh stop
@@ -131,8 +132,8 @@ bash scripts/dev-stack.sh stop
 
 | Variable | Meaning |
 | --- | --- |
-| `MYSQL_ROOT_PASSWORD` | Database admin password. Only the one-off `migrate` job and MySQL itself get it. |
-| `*_DB_PASS`, `*_DB_NAME`, `*_DB_USER` | One limited account per service (select, insert, update, delete; the audit table is append-only). |
+| `MSSQL_SA_PASSWORD` | SQL Server `sa` password. Only the one-off `migrate` job and SQL Server itself get it. It needs 8+ characters with three of: upper case, lower case, digits, symbols. |
+| `*_DB_PASS`, `*_DB_NAME`, `*_DB_USER` | One limited login per service (select, insert, update, delete; the audit table is append-only). |
 | `TOKEN_<FROM>_TO_<TO>` | Twelve service-to-service secrets, one per caller and callee pair. |
 | `QUOTE_SECRET` | Signs price quotes (Booking only). |
 | `PUBLIC_BASE_URL`, `HTTP_PORT`, `COOKIE_SECURE` | Public address, published port, and whether the session cookie is HTTPS-only. |
@@ -148,29 +149,29 @@ bash scripts/dev-stack.sh stop
 - Only publish the `web` container's port 8080. The service ports 8001 to 8004 exist only on the compose network (`/internal/` is also blocked on the public port).
 - Containers run as an unprivileged user with a read-only file system and no extra capabilities. The job containers (one small loop per service) can be replaced by cron every minute running the same commands.
 - Payments: use `sandbox` first, then live keys. PayMongo shows card forms on its own page, so card numbers never touch this system.
-- The compose file uses one MySQL container. For production use a managed MySQL 8 and point `*_DB_HOST` at it (add the variables to the service environments).
+- The compose file uses one SQL Server 2025 Express container, which needs at least 2 GB of memory. For production you can use a managed SQL Server instead and point `*_DB_HOST` at it (add the variables to the service environments). Express is licensed for production; the Developer and Evaluation editions are not.
 - Run `docker compose run --rm migrate` after every upgrade. It applies new migrations once and is safe to repeat.
 
 ### Backup and restore
 
 ```bash
-BACKUP_PASSPHRASE=choose-a-long-passphrase scripts/backup.sh          # backups/harborlight-YYYYmmdd-HHMMSS.sql.gz.enc
-BACKUP_PASSPHRASE=choose-a-long-passphrase scripts/restore.sh backups/FILE.sql.gz.enc --yes
+BACKUP_PASSPHRASE=choose-a-long-passphrase scripts/backup.sh          # backups/harborlight-YYYYmmdd-HHMMSS.tar.gz.enc
+BACKUP_PASSPHRASE=choose-a-long-passphrase scripts/restore.sh backups/FILE.tar.gz.enc --yes
 ```
 
-Backups are consistent (no site downtime), compressed and, with a passphrase, encrypted. Copy them **off the machine**. A restore replaces the data in all four
+Backups are SQL Server backup files of all four databases (no site downtime, every page checked), packed, compressed and, with a passphrase, encrypted. Copy them **off the machine**. A restore replaces the data in all four
 databases, so it needs `--yes`. After a restore, privacy deletions made since the backup are lost: re-apply them from the privacy request list. The scripts also accept
-`MYSQLDUMP=` / `MYSQL=` to point at a non-Docker MySQL. A backup and restore round trip was tested against a real MySQL (see Tests).
+`SQLCMD=` and `SERVER_DIR=` to point at a SQL Server outside Docker (see the script headers). A backup and restore round trip was tested against SQL Server 2025 on Windows.
 
 ## Tests
 
 ```bash
 php tests/run.php                  # 45 logic checks, no database
-bash scripts/dev-stack.sh start    # a stack on a real MySQL
+bash scripts/dev-stack.sh start    # a stack on a real SQL Server
 bash tests/e2e/run-all.sh          # the four end-to-end suites below
 ```
 
-| Suite | What it proves (against the running stack and a real MySQL) |
+| Suite | What it proves (against the running stack and a real SQL Server) |
 | --- | --- |
 | `journey` | Register, search, hold, checkout, signed payment notice, confirmation, email recorded, check-in, check-out, cleaning, inspection, room ready again. |
 | `features` | Early-arrival approval, no-show money, refund and export separation of duties, partner allotment and CSV import, duplicate merge, maintenance conflict, privacy request (copy and deletion), password reset by email link, who may see what. |
@@ -179,7 +180,7 @@ bash tests/e2e/run-all.sh          # the four end-to-end suites below
 
 `tests/e2e/browser-flow.mjs` drives the guest booking flow in Chrome at 375, 768 and 1280 px (needs `playwright-core`; it is a developer tool, not part of CI).
 GitHub Actions (`.github/workflows/ci.yml`) runs lint, the logic checks, static analysis (PHPStan level 5 with a baseline for older findings), a check that the compiled CSS is current,
-the four end-to-end suites on a **MySQL 8.0** service container, and a Docker Compose start-up check.
+the four end-to-end suites on a **SQL Server 2025** service container, and a Docker Compose start-up check.
 
 ## Contracts and design system
 
@@ -196,14 +197,14 @@ portal/ booking/ roomops/ billing/   public/index.php (routes), src/, bin/ (sche
 portal/views, portal/src/Web         pages and page logic;  portal/assets  Tailwind source
 lib/src/                             shared helpers
 scripts/                             migrate, seed-demo, dev-stack, backup, restore, gen-openapi, screenshots
-docker/, docker-compose.yml          nginx + PHP-FPM + MySQL
+docker/, docker-compose.yml          nginx + PHP-FPM + SQL Server
 tests/                               logic checks (tests/cases) and end-to-end suites (tests/e2e)
 docs/                                OpenAPI, AsyncAPI, screenshots
 ```
 
 ## Limits (what this is not)
 
-- **Tested databases:** the full suite passed on MySQL 8.0.22 and 9.7.4 (user-space servers in a sandbox). It was **not** run in this sandbox against the `mysql:8.0` Docker image, and `docker compose` itself was not run here (no Docker); the CI workflow does both on GitHub.
+- **Tested databases:** the full suite passed on SQL Server 2025 (17.0.1145.4) on Windows. It was **not** run locally against the `mssql/server:2025-latest` Docker image, and `docker compose` was not run locally (not enough memory); the CI workflow does both on GitHub.
 - **Payments:** only mock mode was exercised end to end. Sandbox and live PayMongo calls (checkout creation, refunds) are written to the provider's documented shape but were not run against PayMongo.
 - **Email:** only the log fallback was exercised. The Resend call is written to Resend's documented API (with an idempotency key per job) but no real message was sent.
 - **Webhook age:** signatures are checked but webhook timestamps are not age-limited. Replays are harmless because provider event and payment ids are unique.
