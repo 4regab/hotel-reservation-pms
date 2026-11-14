@@ -207,6 +207,15 @@ final class RoomController
         return [201, ['reservationId' => $rid, 'status' => 'PENDING']];
     }
 
+    /** GET /internal/arrival-overrides/{reservationId}: reception checks whether early arrival was decided. */
+    public function overrideStatus(Request $r, array $p): array
+    {
+        $this->user($r, 'override.request');
+        $st = $this->pdo->prepare('SELECT status, reason FROM arrival_override WHERE reservation_id = ?');
+        $st->execute([$this->uuid($p['id'])]);
+        return [200, $st->fetch() ?: ['status' => null, 'reason' => null]];
+    }
+
     public function overrideList(Request $r): array
     {
         $this->user($r, 'override.decide');

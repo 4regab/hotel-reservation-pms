@@ -39,6 +39,7 @@ $router->add('POST', '/internal/cleaning-tasks/{id}/clean', fn ($r, $p) => $c()-
 $router->add('POST', '/internal/cleaning-tasks/{id}/inspect', fn ($r, $p) => $c()->inspect($r, $p));
 $router->add('POST', '/internal/arrival-overrides', fn ($r) => $c()->overrideRequest($r));
 $router->add('GET', '/internal/arrival-overrides', fn ($r) => $c()->overrideList($r));
+$router->add('GET', '/internal/arrival-overrides/{id}', fn ($r, $p) => $c()->overrideStatus($r, $p));
 $router->add('POST', '/internal/arrival-overrides/{id}/approve', fn ($r, $p) => $c()->overrideDecide($r, $p, true));
 $router->add('POST', '/internal/arrival-overrides/{id}/reject', fn ($r, $p) => $c()->overrideDecide($r, $p, false));
 $router->add('GET', '/internal/reports/ops', fn ($r) => $c()->opsReport($r));
