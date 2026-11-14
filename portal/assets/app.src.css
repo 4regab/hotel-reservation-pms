@@ -3,7 +3,7 @@
 /* Where Tailwind looks for class names. Built-in breakpoints only (sm 640, md 768, lg 1024, xl 1280, 2xl 1536). */
 @source "../views";
 @source "../src/Web";
-@source "./app.js";
+@source "../public/assets/app.js";
 
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;

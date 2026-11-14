@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="HarborLight logo">
+  <rect width="64" height="64" rx="14" fill="#0c4a6e"/>
+  <path d="M32 9l-3 3v6h6v-6z" fill="#fbbf24"/>
+  <path d="M27 18h10l3 24H24z" fill="#f8fafc"/>
+  <rect x="26" y="26" width="12" height="4" fill="#0369a1"/>
+  <rect x="25" y="34" width="14" height="4" fill="#0369a1"/>
+  <path d="M10 46c4-3 8-3 11 0s7 3 11 0 7-3 11 0 7 3 11 0v8H10z" fill="#38bdf8"/>
+  <path d="M10 51c4-3 8-3 11 0s7 3 11 0 7-3 11 0 7 3 11 0v6H10z" fill="#0ea5e9"/>
+  <path d="M32 9l14-3M32 9L18 6" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" opacity=".7"/>
+</svg>

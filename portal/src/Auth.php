@@ -61,6 +61,12 @@ final class Auth
         return $st->fetch() ?: null;
     }
 
+    /** Per-address limit on sign-in attempts (20 a minute). */
+    public function throttle(string $ip): void
+    {
+        $this->limit->hit('login:' . $ip, 20, 60);
+    }
+
     private const MAX_FAILS = 5;
     private const LOCK_MINUTES = 15;
 
