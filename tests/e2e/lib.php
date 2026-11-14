@@ -123,9 +123,9 @@ function uuid(): string
 function admin(string $svc): PDO
 {
     $name = (string) getenv(strtoupper($svc) . '_DB_NAME');
-    $pdo = new PDO(sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', getenv('DB_ADMIN_HOST') ?: '127.0.0.1', getenv('DB_ADMIN_PORT') ?: '3306', $name),
-        (string) (getenv('DB_ADMIN_USER') ?: 'root'), (string) getenv('DB_ADMIN_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
-    $pdo->exec("SET time_zone = '+00:00'");
+    $pdo = new PDO(Lib\Db::dsn(getenv('DB_ADMIN_HOST') ?: '127.0.0.1', getenv('DB_ADMIN_PORT') ?: '1433', $name),
+        (string) getenv('DB_ADMIN_USER'), (string) getenv('DB_ADMIN_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::SQLSRV_ATTR_FETCHES_NUMERIC_TYPE => true]);
+    $pdo->exec('SET LOCK_TIMEOUT 50000');   // like Lib\Db::connect: wait at most 50 seconds for a row lock
     return $pdo;
 }
 
@@ -164,7 +164,10 @@ function leaveFree(string $typeName, string $in, string $out, int $left): void
     $b = admin('booking');
     $t = $b->query('SELECT room_type_id, capacity FROM room_type WHERE name = ' . $b->quote($typeName))->fetch();
     foreach (Lib\Dates::nights($in, $out) as $n) {
-        $b->prepare('INSERT INTO inventory_night (room_type_id, stay_date, capacity, blocked, held, confirmed, ota_remaining) VALUES (?, ?, ?, 0, 0, ?, 0) ON DUPLICATE KEY UPDATE held = 0, confirmed = VALUES(confirmed), blocked = 0, ota_remaining = 0')
+        $b->prepare('MERGE inventory_night WITH (HOLDLOCK) AS d USING (SELECT ? AS room_type_id, CAST(? AS DATE) AS stay_date, CAST(? AS INT) AS capacity, CAST(? AS INT) AS confirmed) AS s
+            ON d.room_type_id = s.room_type_id AND d.stay_date = s.stay_date
+            WHEN MATCHED THEN UPDATE SET held = 0, confirmed = s.confirmed, blocked = 0, ota_remaining = 0
+            WHEN NOT MATCHED THEN INSERT (room_type_id, stay_date, capacity, blocked, held, confirmed, ota_remaining) VALUES (s.room_type_id, s.stay_date, s.capacity, 0, 0, s.confirmed, 0);')
             ->execute([$t['room_type_id'], $n, $t['capacity'], $t['capacity'] - $left]);
     }
 }

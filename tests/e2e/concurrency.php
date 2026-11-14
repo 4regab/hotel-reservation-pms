@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 // 20 guests try to hold the LAST room of a type for the same night at the same moment.
 // Exactly one hold may succeed. The rest must be refused with 409, stock must never go negative, and nothing may be oversold.
-// Also checks the same race when 3 rooms are left. Runs against the real stack and a real MySQL.
+// Also checks the same race when 3 rooms are left. Runs against the real stack and a real SQL Server.
 require __DIR__ . '/lib.php';
 
 /** Fire the same hold request from many guests at once with curl_multi. @return list<array{0:int,1:array}> */

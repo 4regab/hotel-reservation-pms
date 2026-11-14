@@ -22,16 +22,15 @@ $reset = in_array('--reset', $argv, true);
 function admin(string $svc): PDO
 {
     $name = (string) getenv(strtoupper($svc) . '_DB_NAME');
-    $pdo = new PDO(sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', getenv('DB_ADMIN_HOST') ?: '127.0.0.1', getenv('DB_ADMIN_PORT') ?: '3306', $name),
-        (string) (getenv('DB_ADMIN_USER') ?: 'root'), (string) getenv('DB_ADMIN_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
-    $pdo->exec("SET time_zone = '+00:00'");
-    return $pdo;
+    // Same fetch mode as Lib\Db::connect: INT columns come back as PHP ints (BIGINT stays a string).
+    return new PDO(\Lib\Db::dsn(getenv('DB_ADMIN_HOST') ?: '127.0.0.1', getenv('DB_ADMIN_PORT') ?: '1433', $name),
+        (string) getenv('DB_ADMIN_USER'), (string) getenv('DB_ADMIN_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::SQLSRV_ATTR_FETCHES_NUMERIC_TYPE => true]);
 }
 
 function ins(PDO $pdo, string $table, array $row): void
 {
     $cols = array_keys($row);
-    $pdo->prepare('INSERT INTO ' . $table . ' (' . implode(',', array_map(fn ($c) => "`$c`", $cols)) . ') VALUES (' . implode(',', array_fill(0, count($cols), '?')) . ')')->execute(array_values($row));
+    $pdo->prepare('INSERT INTO ' . $table . ' (' . implode(',', array_map(fn ($c) => "[$c]", $cols)) . ') VALUES (' . implode(',', array_fill(0, count($cols), '?')) . ')')->execute(array_values($row));
 }
 
 /** Manila local date + clock time -> UTC datetime string. */
@@ -74,11 +73,17 @@ if ($reset) {
         [$R, ['room_assignment', 'cleaning_task', 'maintenance_block', 'arrival_override', 'stay', 'arrival', 'outbox_delivery', 'outbox', 'inbox', 'idempotency_key', 'audit_log']],
         [$L, ['refund', 'charge', 'payment', 'folio', 'checkout_session', 'accounting_export', 'outbox_delivery', 'outbox', 'inbox', 'idempotency_key', 'audit_log']],
         [$P, ['privacy_request', 'password_reset', 'email_log', 'notification_job', 'report_daily', 'session', 'rate_limit', 'inbox', 'audit_log']]] as [$pdo, $tables]) {
-        $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
+        // SQL Server cannot TRUNCATE a table that foreign keys point at: switch the constraints off, DELETE, switch them on (and check them).
+        // audit_log has no foreign keys, so it is truncated, which also restarts its id at 1 like MySQL did.
         foreach ($tables as $t) {
-            $pdo->exec("TRUNCATE TABLE `{$t}`");
+            $pdo->exec("ALTER TABLE [{$t}] NOCHECK CONSTRAINT ALL");
         }
-        $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
+        foreach ($tables as $t) {
+            $pdo->exec(($t === 'audit_log' ? 'TRUNCATE TABLE' : 'DELETE FROM') . " [{$t}]");
+        }
+        foreach ($tables as $t) {
+            $pdo->exec("ALTER TABLE [{$t}] WITH CHECK CHECK CONSTRAINT ALL");
+        }
     }
     $P->exec("DELETE FROM account WHERE email LIKE '%@example.com' OR email LIKE '%@example.org' OR email LIKE '%@example.net' OR email LIKE 'journey.%' OR email LIKE 'test.%'");
     $R->exec("UPDATE room SET readiness = 'READY', version = 1");
@@ -575,7 +580,7 @@ foreach ($plan as $r) {
     }
 }
 // a cashier-requested goodwill refund for the manager (second manager can approve it)
-$onePay = $L->query("SELECT p.payment_id, p.amount_minor FROM payment p LEFT JOIN refund r ON r.payment_id = p.payment_id WHERE p.status = 'CAPTURED' AND p.provider = 'PAYMONGO' AND r.refund_id IS NULL ORDER BY p.created_at DESC LIMIT 1")->fetch();
+$onePay = $L->query("SELECT TOP (1) p.payment_id, p.amount_minor FROM payment p LEFT JOIN refund r ON r.payment_id = p.payment_id WHERE p.status = 'CAPTURED' AND p.provider = 'PAYMONGO' AND r.refund_id IS NULL ORDER BY p.created_at DESC")->fetch();
 if ($onePay) {
     ins($L, 'refund', ['refund_id' => Uuid::v4(), 'payment_id' => $onePay['payment_id'], 'amount_minor' => 100000, 'approval' => 'PENDING', 'status' => 'REQUESTED', 'requested_by' => $acct['cashier@example.test'], 'reason' => 'SERVICE_ISSUE', 'created_at' => utc($today, 11)]);
 }
@@ -584,7 +589,7 @@ $fin = new Billing\FinanceService($L);
 foreach ([[addDays($today, -14), addDays($today, -8), true], [addDays($today, -7), addDays($today, -1), false]] as [$f, $t, $approved]) {
     [, $x] = $fin->requestExport($f, $t, ['accountId' => $acct['cashier@example.test'], 'role' => 'cashier'], null);
     if ($approved) {
-        $L->prepare("UPDATE accounting_export SET status = 'APPROVED', approved_by = ?, decided_at = UTC_TIMESTAMP(), downloads = 1 WHERE export_id = ?")->execute([$acct['manager@example.test'], $x['exportId']]);
+        $L->prepare("UPDATE accounting_export SET status = 'APPROVED', approved_by = ?, decided_at = DATETRUNC(SECOND, SYSUTCDATETIME()), downloads = 1 WHERE export_id = ?")->execute([$acct['manager@example.test'], $x['exportId']]);
     }
 }
 
@@ -654,7 +659,7 @@ foreach ($partners as $pi => $pid) {
 }
 $audit($B, utc(addDays($today, -20), 11), $acct['steward@example.test'], 'steward', 'guest.merge', 'guest', $guests[2]['id'], ['reservationsMoved' => 1]);
 $audit($B, utc(addDays($today, -30), 10), $acct['manager@example.test'], 'manager', 'roomtype.update', 'room_type', $types['Deluxe']['id'], ['before' => ['nightlyMinor' => 520000], 'after' => ['nightlyMinor' => 560000]]);
-foreach ($L->query("SELECT refund_id, amount_minor, completed_at FROM refund WHERE status = 'COMPLETED' ORDER BY created_at DESC LIMIT 12")->fetchAll() as $rf) {
+foreach ($L->query("SELECT TOP (12) refund_id, amount_minor, completed_at FROM refund WHERE status = 'COMPLETED' ORDER BY created_at DESC")->fetchAll() as $rf) {
     $audit($L, (string) $rf['completed_at'], $acct['manager@example.test'], 'manager', 'refund.approved', 'refund', $rf['refund_id'], ['amountMinor' => (int) $rf['amount_minor']]);
 }
 foreach ($L->query('SELECT export_id, batch_ref, status FROM accounting_export')->fetchAll() as $ex) {

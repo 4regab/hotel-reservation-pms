@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-// Full guest-to-housekeeping journey over HTTP against the real stack and a real MySQL:
+// Full guest-to-housekeeping journey over HTTP against the real stack and a real SQL Server:
 // search -> hold -> checkout -> mock payment webhook -> confirm -> email logged -> check-in -> check-out -> cleaning -> ready.
 require __DIR__ . '/lib.php';
 

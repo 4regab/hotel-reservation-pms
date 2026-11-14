@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 // Payment webhooks: bad signatures, replays, wrong amounts, and payments that arrive after the hold expired or the booking was cancelled.
-// Runs against the real stack (webhook -> billing -> outbox -> booking) and a real MySQL.
+// Runs against the real stack (webhook -> billing -> outbox -> booking) and a real SQL Server.
 require __DIR__ . '/lib.php';
 
 echo "payments\n";
@@ -78,7 +78,7 @@ check(true, 'exactly one confirmation email job for the booking');
 
 // ---- 3. payment arrives after the hold expired, and a room is still free: a fresh allocation confirms it
 [$rid2, $sid2, $amount2, $in2, $out2] = holdAndCheckout(uuid(), $standard);
-admin('booking')->prepare('UPDATE reservation SET hold_expires_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 MINUTE) WHERE reservation_id = ?')->execute([$rid2]);
+admin('booking')->prepare('UPDATE reservation SET hold_expires_at = DATEADD(MINUTE, -1, DATETRUNC(SECOND, SYSUTCDATETIME())) WHERE reservation_id = ?')->execute([$rid2]);
 until(fn () => status($rid2) === 'EXPIRED', 'hold expired by the job runner');
 check(night($standard, $in2)['held'] === 0, 'expiry gave the stock back');
 [$body, $sig] = paidWebhook($sid2, $rid2, $amount2);
@@ -89,7 +89,7 @@ check(night($standard, $in2)['confirmed'] === 16, 'the fresh allocation took one
 
 // ---- 4. payment arrives after expiry and nothing is left: stays EXPIRED, exactly one refund request
 [$rid3, $sid3, $amount3, $in3, $out3] = holdAndCheckout(uuid(), $standard);
-admin('booking')->prepare('UPDATE reservation SET hold_expires_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 MINUTE) WHERE reservation_id = ?')->execute([$rid3]);
+admin('booking')->prepare('UPDATE reservation SET hold_expires_at = DATEADD(MINUTE, -1, DATETRUNC(SECOND, SYSUTCDATETIME())) WHERE reservation_id = ?')->execute([$rid3]);
 until(fn () => status($rid3) === 'EXPIRED', 'hold expired');
 leaveFree('Standard', $in3, $out3, 0);   // the last rooms were sold meanwhile
 [$body, $sig] = paidWebhook($sid3, $rid3, $amount3);

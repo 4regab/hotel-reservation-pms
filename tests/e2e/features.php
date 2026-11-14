@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-// The business rules added on top of the basic journey, driven over HTTP against the real stack and a real MySQL:
+// The business rules added on top of the basic journey, driven over HTTP against the real stack and a real SQL Server:
 // early-arrival approval, no-show, refund and export separation of duties, OTA allotment import, duplicate merge, maintenance conflict,
 // privacy requests, password reset, and "who may see what".
 require __DIR__ . '/lib.php';
@@ -56,9 +56,11 @@ $tomorrow = (new DateTimeImmutable(Lib\Dates::manilaToday()))->modify('+2 day')-
 $rid3 = confirmed($ids, 'Standard', $in3, $out3);
 $B = admin('booking');
 $B->prepare('UPDATE reservation SET check_in = ?, check_out = ? WHERE reservation_id = ?')->execute([$yesterday, $tomorrow, $rid3]);
-$B->prepare('UPDATE allocation SET stay_date = DATE_ADD(?, INTERVAL DATEDIFF(stay_date, ?) DAY) WHERE reservation_id = ?')->execute([$yesterday, $in3, $rid3]);
+$B->prepare('UPDATE allocation SET stay_date = DATEADD(DAY, DATEDIFF(DAY, CAST(? AS DATE), stay_date), CAST(? AS DATE)) WHERE reservation_id = ?')->execute([$in3, $yesterday, $rid3]);
 foreach (Lib\Dates::nights($yesterday, $tomorrow) as $n) {
-    $B->prepare('INSERT INTO inventory_night (room_type_id, stay_date, capacity, blocked, held, confirmed, ota_remaining) VALUES (?, ?, 20, 0, 0, 1, 0) ON DUPLICATE KEY UPDATE confirmed = GREATEST(confirmed, 1)')->execute([$std, $n]);
+    $B->prepare('MERGE inventory_night WITH (HOLDLOCK) AS d USING (SELECT ? AS room_type_id, CAST(? AS DATE) AS stay_date) AS s ON d.room_type_id = s.room_type_id AND d.stay_date = s.stay_date
+        WHEN MATCHED THEN UPDATE SET confirmed = GREATEST(d.confirmed, 1)
+        WHEN NOT MATCHED THEN INSERT (room_type_id, stay_date, capacity, blocked, held, confirmed, ota_remaining) VALUES (s.room_type_id, s.stay_date, 20, 0, 0, 1, 0);')->execute([$std, $n]);
 }
 $amount = (int) $B->query("SELECT quote_minor FROM reservation WHERE reservation_id = '{$rid3}'")->fetchColumn();
 [$s, $d] = $as('reception', 'booking', 'POST', "/internal/reservations/{$rid3}/no-show", []);
@@ -134,7 +136,7 @@ check($s === 403, 'the steward cannot see bookings');
 check($s === 200, 'the steward merges them');
 
 // ---- maintenance never silently displaces a guest
-$room = admin('roomops')->query("SELECT a.room_id FROM room_assignment a WHERE a.stay_id = (SELECT stay_id FROM stay WHERE reservation_id = '{$rid}') LIMIT 1")->fetchColumn();
+$room = admin('roomops')->query("SELECT TOP (1) a.room_id FROM room_assignment a WHERE a.stay_id = (SELECT stay_id FROM stay WHERE reservation_id = '{$rid}')")->fetchColumn();
 [$s, $d] = $as('housekeeping', 'roomops', 'POST', '/internal/maintenance-blocks', ['requestId' => uuid(), 'roomId' => $room, 'startDate' => $in, 'endDate' => $out, 'reason' => 'Leaking tap']);
 check($s === 409 && $d['error']['code'] === 'MAINTENANCE_CONFLICT', 'a block over a guest\'s stay is refused and escalated');
 [$s, $d] = $as('manager', 'roomops', 'GET', '/internal/maintenance-blocks?status=CONFLICT');
@@ -179,7 +181,7 @@ $delId = admin('portal')->query("SELECT request_id FROM privacy_request p JOIN a
 $guest2 = new Client(base());
 [$s] = $guest2->post('/v1/login', ['email' => $email, 'password' => 'privacy-pass-123']);
 check($s === 401, 'after deletion the account can no longer sign in');
-check(admin('portal')->query("SELECT full_name FROM account WHERE email LIKE 'deleted-%' AND anonymized_at IS NOT NULL ORDER BY anonymized_at DESC LIMIT 1")->fetchColumn() === 'Deleted guest', 'and the name is gone from the account');
+check(admin('portal')->query("SELECT TOP (1) full_name FROM account WHERE email LIKE 'deleted-%' AND anonymized_at IS NOT NULL ORDER BY anonymized_at DESC")->fetchColumn() === 'Deleted guest', 'and the name is gone from the account');
 
 // ---- password reset by email link
 $u = new Client(base());
