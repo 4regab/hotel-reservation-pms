@@ -7,14 +7,15 @@ payments, partner bookings, reports and privacy requests from the same system.
 It is plain PHP 8.3 (no framework, no Composer packages), server-rendered pages with Tailwind CSS and a little vanilla
 JavaScript, Microsoft SQL Server 2025, and nginx + PHP-FPM. The compiled CSS is committed, so nothing needs Node to run.
 
-![Landing page at 1280 px](docs/screenshots/landing-desktop-1280.png)
+![Landing page at 1280 px](docs/screenshots/after/index-1280.jpg)
 
 | Phone (375 px) | Tablet (768 px) |
 | --- | --- |
-| ![Landing page on a phone](docs/screenshots/landing-mobile-375.png) | ![Landing page on a tablet](docs/screenshots/landing-tablet-768.png) |
+| ![Landing page on a phone](docs/screenshots/after/index-375.jpg) | ![Landing page on a tablet](docs/screenshots/after/index-768.jpg) |
 
-More screenshots are in [`docs/screenshots`](docs/screenshots): search results, payment with the hold countdown, confirmation,
-front desk, housekeeping board, approvals queue and reports.
+More screenshots at 375, 768 and 1280 px are in [`docs/screenshots/after`](docs/screenshots/after): rooms, search results, guest details,
+payment with the hold countdown, confirmation, sign-in, my bookings, front desk, housekeeping board, approvals queue and reports.
+The same pages before the redesign are in [`docs/screenshots/before`](docs/screenshots/before). They were rendered with sample data, not a live database.
 
 ## What you can do
 
