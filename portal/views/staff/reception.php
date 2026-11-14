@@ -27,8 +27,8 @@ $tabs = ['arrivals' => 'Arrivals', 'inhouse' => 'In house', 'departures' => 'Dep
         <tbody>
           <?php foreach ($rows as $r) { $late = $r['status'] === 'CONFIRMED' && $r['checkIn'] < $today; ?>
             <tr>
-              <td class="font-mono font-semibold"><a class="link" href="/staff/reservations/<?= e($r['reservationId']) ?>"><?= e($r['code']) ?></a></td>
-              <td><?= e($r['guestName']) ?><?php if ($r['specialRequests']) { ?><p class="text-xs text-slate-600">Request: <?= e(mb_strimwidth($r['specialRequests'], 0, 60, '...')) ?></p><?php } ?></td>
+              <td class="whitespace-nowrap font-mono font-semibold"><a class="link" href="/staff/reservations/<?= e($r['reservationId']) ?>"><?= e($r['code']) ?></a></td>
+              <td class="min-w-48 max-w-xs"><?= e($r['guestName']) ?><?php if ($r['specialRequests']) { ?><p class="text-xs text-slate-600">Request: <?= e(mb_strimwidth($r['specialRequests'], 0, 60, '...')) ?></p><?php } ?></td>
               <td><?= e($r['roomTypeName']) ?><?= $r['quantity'] > 1 ? ' x ' . e($r['quantity']) : '' ?><?php if (isset($stays[$r['reservationId']])) { ?><p class="text-xs font-semibold text-brand-900">Room <?= e($stays[$r['reservationId']]) ?></p><?php } ?></td>
               <td class="whitespace-nowrap"><?= e(d($r['checkIn'])) ?> to <?= e(d($r['checkOut'])) ?></td>
               <td><?= badge($r['status']) ?><?php if ($late) { ?> <span class="badge badge-amber">Late</span><?php } ?></td>
