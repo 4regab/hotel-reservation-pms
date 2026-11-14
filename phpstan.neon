@@ -2,5 +2,5 @@ includes:
   - phpstan-baseline.neon
 parameters:
   level: 5
-  paths: [lib/src, booking/src, roomops/src, billing/src, portal/src]
+  paths: [src/shared/src, src/booking/src, src/roomops/src, src/billing/src, src/portal/src]
   bootstrapFiles: [autoload.php]

@@ -4,28 +4,28 @@ parameters:
 			message: '#^Anonymous function has an unused use \$find\.$#'
 			identifier: closure.unusedUse
 			count: 1
-			path: booking/src/GuestController.php
+			path: src/booking/src/GuestController.php
 
 		-
 			message: '#^Variable \$http_response_header on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.variable
 			count: 1
-			path: lib/src/Http.php
+			path: src/shared/src/Http.php
 
 		-
 			message: '#^If condition is always false\.$#'
 			identifier: if.alwaysFalse
 			count: 1
-			path: lib/src/Tx.php
+			path: src/shared/src/Tx.php
 
 		-
 			message: '#^Method Portal\\SessionStore\:\:gc\(\) never returns false so it can be removed from the return type\.$#'
 			identifier: return.unusedType
 			count: 1
-			path: portal/src/SessionStore.php
+			path: src/portal/src/SessionStore.php
 
 		-
 			message: '#^Method Portal\\SessionStore\:\:read\(\) never returns false so it can be removed from the return type\.$#'
 			identifier: return.unusedType
 			count: 1
-			path: portal/src/SessionStore.php
+			path: src/portal/src/SessionStore.php

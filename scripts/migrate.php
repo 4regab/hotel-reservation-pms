@@ -35,7 +35,7 @@ foreach ($services as $svc) {
     $admin->exec('USE ' . $ident($name));
     $admin->exec("IF OBJECT_ID(N'dbo.schema_migrations', N'U') IS NULL CREATE TABLE schema_migrations (filename NVARCHAR(120) NOT NULL PRIMARY KEY, applied_at DATETIME2(0) NOT NULL)");
     $done = $admin->query('SELECT filename FROM schema_migrations')->fetchAll(PDO::FETCH_COLUMN);
-    $files = glob("{$root}/{$svc}/migrations/*.sql") ?: [];
+    $files = glob("{$root}/src/{$svc}/migrations/*.sql") ?: [];
     sort($files);
     foreach ($files as $f) {
         $base = basename($f);

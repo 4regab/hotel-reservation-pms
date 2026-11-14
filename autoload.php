@@ -7,11 +7,11 @@ date_default_timezone_set('UTC');
 
 spl_autoload_register(static function (string $class): void {
     static $map = [
-        'Lib\\'     => 'lib/src/',
-        'Booking\\' => 'booking/src/',
-        'RoomOps\\' => 'roomops/src/',
-        'Billing\\' => 'billing/src/',
-        'Portal\\'  => 'portal/src/',
+        'Lib\\'     => 'src/shared/src/',
+        'Booking\\' => 'src/booking/src/',
+        'RoomOps\\' => 'src/roomops/src/',
+        'Billing\\' => 'src/billing/src/',
+        'Portal\\'  => 'src/portal/src/',
     ];
     foreach ($map as $prefix => $dir) {
         if (str_starts_with($class, $prefix)) {

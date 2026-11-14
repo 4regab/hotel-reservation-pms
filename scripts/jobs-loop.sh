@@ -4,8 +4,8 @@
 cd "$(dirname "$0")/.."
 PHP=${PHP_BIN:-php}
 while true; do
-  $PHP booking/bin/expire-holds.php
-  for s in booking roomops billing portal; do [ -f "$s/bin/dispatch.php" ] && $PHP "$s/bin/dispatch.php"; done
-  $PHP portal/bin/send-notifications.php
+  $PHP src/booking/bin/expire-holds.php
+  for s in booking roomops billing portal; do [ -f "src/$s/bin/dispatch.php" ] && $PHP "src/$s/bin/dispatch.php"; done
+  $PHP src/portal/bin/send-notifications.php
   sleep "${JOBS_INTERVAL:-2}"
 done

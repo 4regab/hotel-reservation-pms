@@ -25,12 +25,12 @@ Stop-Stack
 . (Join-Path $PSScriptRoot 'dev-env.ps1')
 
 php scripts/migrate.php; if ($LASTEXITCODE) { throw 'migrate failed' }
-php portal/bin/ensure-admin.php; if ($LASTEXITCODE) { throw 'ensure-admin failed' }
+php src/portal/bin/ensure-admin.php; if ($LASTEXITCODE) { throw 'ensure-admin failed' }
 php scripts/seed-demo.php; if ($LASTEXITCODE) { throw 'seed-demo failed' }
 
 function Start-Svc([string]$name, [string]$svc, [int]$port) {
     $env:SERVICE_NAME = $svc
-    $p = Start-Process php -ArgumentList '-S', "127.0.0.1:$port", '-t', "$svc/public", "$svc/public/index.php" -WindowStyle Hidden -PassThru `
+    $p = Start-Process php -ArgumentList '-S', "127.0.0.1:$port", '-t', "src/$svc/public", "src/$svc/public/index.php" -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput "$run\$name.log" -RedirectStandardError "$run\$name.err.log"
     $p.Id | Set-Content "$run\$name.pid"
 }
@@ -45,7 +45,7 @@ $env:BILLING_URL = 'http://127.0.0.1:8103'
 Start-Svc 'billing-cb' 'billing' 8105
 Remove-Item env:SERVICE_NAME
 
-$jobs = 'while ($true) { php booking/bin/expire-holds.php; foreach ($s in ''booking'',''roomops'',''billing'',''portal'') { if (Test-Path "$s/bin/dispatch.php") { php "$s/bin/dispatch.php" } }; php portal/bin/send-notifications.php; Start-Sleep 2 }'
+$jobs = 'while ($true) { php src/booking/bin/expire-holds.php; foreach ($s in ''booking'',''roomops'',''billing'',''portal'') { if (Test-Path "src/$s/bin/dispatch.php") { php "src/$s/bin/dispatch.php" } }; php src/portal/bin/send-notifications.php; Start-Sleep 2 }'
 $j = Start-Process powershell -ArgumentList '-NoProfile', '-Command', $jobs -WindowStyle Hidden -PassThru -RedirectStandardOutput "$run\jobs.log" -RedirectStandardError "$run\jobs.err.log"
 $j.Id | Set-Content "$run\jobs.pid"
 
