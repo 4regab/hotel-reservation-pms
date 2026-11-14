@@ -233,7 +233,7 @@ final class OtaService
         }
         $this->inv->ensureNights($type['room_type_id'], $nights);
 
-        return Tx::run($this->pdo, function () use ($partner, $ext, $ci, $co, $nights, $name, $email, $row, $qty, $type, $amount, $user): string {
+        return Tx::run($this->pdo, function () use ($partner, $ext, $ci, $co, $nights, $name, $email, $row, $qty, $type, $amount): string {
             // Reservation-level uniqueness is also protected by the (partner_id, external_booking_id) primary key below.
             $alloc = $this->pdo->prepare(
                 "SELECT a.allotment_id FROM ota_allotment a

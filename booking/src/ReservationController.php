@@ -99,7 +99,7 @@ final class ReservationController
         // The idempotency record is written in the SAME transaction as the hold.
         [$status, $body, $replayed] = Tx::run($this->pdo, fn () => Idempotency::run(
             new PdoIdempotencyStore($this->pdo), $r->header('Idempotency-Key'), $user['accountId'], Idempotency::hash($r->method, $r->path, $r->body),
-            function () use ($user, $quote, $onBehalf, $b, $now, $adults, $requests): array {
+            function () use ($user, $quote, $onBehalf, $b, $now, $adults, $requests, $r): array {
                 [$st, $body] = $this->wf->hold($user['accountId'], $quote, $onBehalf, $b['guest'] ?? [], $now, ['adults' => $adults, 'specialRequests' => $requests]);
                 if ($st === 201) {
                     Audit::record($this->pdo, $user, 'reservation.hold', 'reservation', $body['reservationId'], ['roomTypeId' => $quote['roomTypeId'], 'checkIn' => $quote['checkIn'], 'checkOut' => $quote['checkOut']], $r->ip());

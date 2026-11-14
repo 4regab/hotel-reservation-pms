@@ -141,7 +141,7 @@ final class FolioService
     /** Manager approves; the provider refund is requested AFTER the approval commits (no locks held during the call). */
     public function approveRefund(string $refundId, array $user, ?string $ip = null): array
     {
-        $r = Tx::run($this->pdo, function () use ($refundId, $user): array {
+        $r = Tx::run($this->pdo, function () use ($refundId, $user, $ip): array {
             $r = $this->one('SELECT r.refund_id, r.amount_minor, r.status, r.requested_by, p.provider_payment_id, p.reservation_id, p.payment_id, p.currency FROM refund r JOIN payment p ON p.payment_id = r.payment_id WHERE r.refund_id = ? FOR UPDATE OF r', [$refundId])
                 ?? throw new ApiException(404, 'NOT_FOUND');
             RefundPolicy::assertCanApprove($user['role'], $user['accountId'], $r['requested_by']);
