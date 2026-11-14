@@ -18,6 +18,9 @@ return [
             check(str_contains($doc, "Consumed by " . implode(', ', $consumers) . '.'), "consumers of {$type} match lib/src/Routing.php");
         }
         preg_match_all('/^  hotel\.(\w+)\.v1:/m', $doc, $m);
-        same(array_keys(Routing::SUBSCRIBERS), $m[1], 'no extra and no missing channels');
+        $want = array_keys(Routing::SUBSCRIBERS);
+        sort($want);
+        sort($m[1]);
+        same($want, $m[1], 'no extra and no missing channels');
     },
 ];
