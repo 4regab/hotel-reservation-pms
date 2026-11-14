@@ -22,7 +22,7 @@ final class PaymentProcessor
     public function record(array $p): string
     {
         return Tx::run($this->pdo, function () use ($p): string {
-            $st = $this->pdo->prepare('SELECT reservation_id, amount_minor, currency FROM checkout_session WHERE session_id = ? FOR UPDATE');
+            $st = $this->pdo->prepare('SELECT reservation_id, amount_minor, currency FROM checkout_session WITH (UPDLOCK, ROWLOCK) WHERE session_id = ?');
             $st->execute([$p['sessionId']]);
             $s = $st->fetch();
             // Amount, currency and reservation must match the checkout we created; otherwise keep it for finance review.
@@ -34,10 +34,10 @@ final class PaymentProcessor
 
             $paymentId = Uuid::v4();
             try {
-                $this->pdo->prepare('INSERT INTO payment (payment_id, reservation_id, folio_id, provider, provider_payment_id, provider_event_id, amount_minor, currency, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())')
+                $this->pdo->prepare('INSERT INTO payment (payment_id, reservation_id, folio_id, provider, provider_payment_id, provider_event_id, amount_minor, currency, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))')
                     ->execute([$paymentId, $p['reservationId'], $folioId, 'PAYMONGO', $p['providerPaymentId'], $p['providerEventId'], $p['amountMinor'], $p['currency'], $ok ? 'CAPTURED' : 'REVIEW']);
             } catch (\PDOException $e) {
-                if (($e->errorInfo[1] ?? 0) === 1062) {
+                if (\Lib\Db::isDuplicateKey($e)) {
                     return 'duplicate';
                 }
                 throw $e;

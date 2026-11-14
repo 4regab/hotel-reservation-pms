@@ -39,7 +39,7 @@ final class BillingController
                 }
                 // The provider call happens with NO database transaction or lock open.
                 $co = $this->provider->createCheckout($rid, (int) $res['amountMinor'], (string) $res['currency'], 'HarborLight Hotels stay ' . substr($rid, 0, 8));
-                $this->pdo->prepare("INSERT INTO checkout_session (session_id, reservation_id, amount_minor, currency, status, checkout_url, created_at) VALUES (?, ?, ?, ?, 'PENDING', ?, UTC_TIMESTAMP())")
+                $this->pdo->prepare("INSERT INTO checkout_session (session_id, reservation_id, amount_minor, currency, status, checkout_url, created_at) VALUES (?, ?, ?, ?, 'PENDING', ?, DATETRUNC(SECOND, SYSUTCDATETIME()))")
                     ->execute([$co['sessionId'], $rid, (int) $res['amountMinor'], $res['currency'], $co['checkoutUrl']]);
                 return [201, ['reservationId' => $rid, 'sessionId' => $co['sessionId'], 'checkoutUrl' => $co['checkoutUrl'], 'amountMinor' => (int) $res['amountMinor'], 'currency' => $res['currency']]];
             },
