@@ -31,11 +31,11 @@ $profile = $staff ? '/staff/account' : '/account/profile';
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<title><?= e($title !== '' ? $title . ' | MA Hotel' : 'MA Hotel, Metro Manila') ?></title>
-<meta name="description" content="<?= e($description !== '' ? $description : 'MA Hotel is a 45-room boutique hotel in Metro Manila. Book direct for the best rate, with free cancellation up to 48 hours before arrival.') ?>">
+<title><?= e($title !== '' ? $title . ' | MA Hotel' : 'MA Hotel | Boutique hotel in Metro Manila') ?></title>
+<meta name="description" content="<?= e($description !== '' ? $description : 'MA Hotel is a boutique hotel in Metro Manila with quiet Standard rooms, Deluxe rooms and Suites, rain showers and a front desk open day and night. Free cancellation up to 48 hours before you arrive.') ?>">
 <meta name="theme-color" content="#1f2b4d">
 <meta property="og:title" content="MA Hotel">
-<meta property="og:description" content="A 45-room boutique hotel in Metro Manila. Book direct, cancel free until 48 hours before arrival.">
+<meta property="og:description" content="A boutique hotel in Metro Manila with quiet rooms, rain showers and a front desk open day and night.">
 <meta property="og:type" content="website">
 <link rel="icon" href="/assets/brand/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/assets/brand/favicon-32.png" type="image/png" sizes="32x32">
@@ -155,7 +155,7 @@ $profile = $staff ? '/staff/account' : '/account/profile';
   </div>
   <div class="container-page flex flex-wrap justify-between gap-2 border-t border-white/10 py-6 text-xs text-ink-400">
     <p>MA Hotel, Metro Manila, Philippines</p>
-    <p>Prices in Philippine pesos, taxes included.</p>
+    <p>We accept card, GCash and Maya.</p>
   </div>
 </footer>
 <?php } ?>
