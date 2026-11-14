@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Run the four services and the job loop with the PHP built-in server (development and CI only;
+# production uses nginx + php-fpm, see docker-compose.yml). Needs a MySQL reachable per scripts/dev-env.sh.
+# Usage: scripts/dev-stack.sh start|stop
+set -euo pipefail
+cd "$(dirname "$0")/.."
+# shellcheck disable=SC1091
+source scripts/dev-env.sh
+RUN=${RUN_DIR:-${KIROCREW_SCRATCH:-/tmp}/harbor-run}
+mkdir -p "$RUN"
+
+stop() {
+  for f in "$RUN"/*.pid; do [ -e "$f" ] && kill "$(cat "$f")" 2>/dev/null || true; rm -f "$f"; done
+}
+
+case "${1:-start}" in
+  stop) stop ;;
+  start)
+    stop
+    export PHP_CLI_SERVER_WORKERS=8
+    $PHP_BIN scripts/migrate.php
+    $PHP_BIN portal/bin/seed.php
+    for pair in portal:8100 booking:8101 roomops:8102 billing:8103; do
+      svc=${pair%%:*}; port=${pair##*:}
+      nohup $PHP_BIN -S 127.0.0.1:"$port" -t "$svc/public" "$svc/public/index.php" > "$RUN/$svc.log" 2>&1 &
+      echo $! > "$RUN/$svc.pid"
+    done
+    nohup bash scripts/jobs-loop.sh > "$RUN/jobs.log" 2>&1 &
+    echo $! > "$RUN/jobs.pid"
+    for port in 8100 8101 8102 8103; do
+      for _ in $(seq 1 50); do curl -fs "http://127.0.0.1:$port/healthz" > /dev/null && break; sleep 0.2; done
+    done
+    echo "stack up: portal http://127.0.0.1:8100"
+    ;;
+esac
