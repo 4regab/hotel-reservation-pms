@@ -4,12 +4,12 @@ Technical detail for developers: the services, how the business rules are enforc
 
 ## Architecture
 
-Four small PHP services, each with its **own database and its own database account**, behind one nginx.
+Four small PHP services, each with its **own database and its own database account**. Only the Portal faces the browser.
 
 ```
                       Browser
                          │  HTTPS
-                       nginx  ── static files (/assets)
+                   web server  ── static files (/assets)
           ┌──────────────┼───────────────┬───────────────┐
           ▼              ▼               ▼               ▼
        Portal        Booking        Room Operations    Billing
@@ -35,17 +35,17 @@ How the rules are enforced:
 - **Events.** A service writes the event in the same transaction as the change. A scheduled job delivers it over the private network. The receiver records the event id in the same transaction as its own update. Failures retry with growing delays and are flagged for review after 5 tries, never deleted.
 - **Late payments.** Paid after the hold expired: try a fresh allocation, otherwise stay unconfirmed and file one refund request. Paid after cancellation: stay cancelled and file one refund request. Replays of the same payment notice do nothing.
 - **Separation of duties.** A cashier cannot approve refunds. Nobody approves their own refund or export. The person who cleaned a room cannot inspect it. Housekeeping has no payment or identity access. The steward sees no bookings. IT sees no bookings or payments.
-- **Credentials.** Each caller/callee pair has its own secret (`TOKEN_PORTAL_TO_BOOKING` and so on). A container receives only the pairs it sends or receives, plus its own database account. Only the web container publishes a port, and the services' private ports are not reachable from outside.
+- **Credentials.** Each caller/callee pair has its own secret (`TOKEN_PORTAL_TO_BOOKING` and so on). A service receives only the pairs it sends or receives, plus its own database account. Only the Portal's port is meant to be public, and the services' private ports must not be reachable from outside.
 - **Privacy.** Contact and card data stay out of events, logs and the audit log. Only the identity document *type* is saved. Guests see only their own records (others get 404).
 - **Money and time.** Integer centavos, currency PHP, UUID ids, times in UTC, stay dates in Asia/Manila. Check-in 14:00, check-out 12:00.
 
 
 ## Tests
 
-```bash
-php tests/run.php                  # 45 logic checks, no database
-bash scripts/dev-stack.sh start    # a stack on a real SQL Server
-bash tests/e2e/run-all.sh          # the four end-to-end suites below
+```powershell
+php tests/run.php                              # 45 logic checks, no database
+powershell -File scripts/dev-stack.ps1 start   # the site on a real SQL Server
+powershell -File tests/e2e/run-all.ps1         # the four end-to-end suites below
 ```
 
 | Suite | What it proves (against the running stack and a real SQL Server) |
@@ -57,7 +57,7 @@ bash tests/e2e/run-all.sh          # the four end-to-end suites below
 
 `tests/e2e/browser-flow.mjs` drives the guest booking flow in Chrome at 375, 768 and 1280 px (needs `playwright-core`; it is a developer tool, not part of CI).
 GitHub Actions (`.github/workflows/ci.yml`) runs lint, the logic checks, static analysis (PHPStan level 5 with a baseline for older findings), a check that the compiled CSS is current,
-the four end-to-end suites on a **SQL Server 2025** service container, and a Docker Compose start-up check.
+the four end-to-end suites on a **SQL Server 2025** service container.
 
 
 ## Contracts and design system
@@ -77,8 +77,7 @@ the four end-to-end suites on a **SQL Server 2025** service container, and a Doc
 portal/ booking/ roomops/ billing/   public/index.php (routes), src/, bin/ (scheduled jobs), migrations/ (SQL)
 portal/views, portal/src/Web         pages and page logic;  portal/assets  Tailwind source
 lib/src/                             shared helpers
-scripts/                             migrate, seed-demo, dev-stack, backup, restore, gen-openapi, screenshots
-docker/, docker-compose.yml          nginx + PHP-FPM + SQL Server
+scripts/                             migrate, seed-demo, dev-stack, dev-env, gen-openapi, screenshots
 tests/                               logic checks (tests/cases) and end-to-end suites (tests/e2e)
 docs/                                OpenAPI, AsyncAPI, screenshots
 ```
@@ -86,7 +85,7 @@ docs/                                OpenAPI, AsyncAPI, screenshots
 
 ## Limits (what this is not)
 
-- **Tested databases:** the full suite passed on SQL Server 2025 (17.0.1145.4) on Windows. It was **not** run locally against the `mssql/server:2025-latest` Docker image, and `docker compose` was not run locally (not enough memory); the CI workflow does both on GitHub.
+- **Tested databases:** the full suite passed on SQL Server 2025 (17.0.1145.4) on Windows. The CI workflow runs the same suites on GitHub against the `mssql/server:2025-latest` image.
 - **Payments:** only mock mode was exercised end to end. Sandbox and live PayMongo calls (checkout creation, refunds) are written to the provider's documented shape but were not run against PayMongo.
 - **Email:** only the log fallback was exercised. The Resend call is written to Resend's documented API (with an idempotency key per job) but no real message was sent.
 - **Webhook age:** signatures are checked but webhook timestamps are not age-limited. Replays are harmless because provider event and payment ids are unique.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs every end-to-end test against a running stack (scripts/dev-stack.sh start, or the compose stack with the same env).
+# Runs every end-to-end test against a running stack (scripts/dev-stack.sh start). On Windows use tests/e2e/run-all.ps1.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 source scripts/dev-env.sh

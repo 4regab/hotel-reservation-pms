@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scheduled jobs in a loop (development, CI, and the compose "jobs" container). In production run
+# Scheduled jobs in a loop (development and CI). In production run
 # the same commands from cron every minute, or keep this loop under a process supervisor.
 cd "$(dirname "$0")/.."
 PHP=${PHP_BIN:-php}

@@ -83,22 +83,3 @@ jobs:
       - name: Service logs (only on failure)
         if: failure()
         run: tail -n 80 .run/*.log
-
-  docker:
-    name: Docker Compose starts and answers
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Create .env from the example
-        run: cp .env.example .env
-      - name: Build and start (waits until every healthcheck passes)
-        run: docker compose up --build --wait --wait-timeout 240
-      - name: The site answers
-        run: |
-          curl -fsS http://127.0.0.1:8080/healthz
-          curl -fsS http://127.0.0.1:8080/ | grep -q "MA Hotel"
-          curl -fsS http://127.0.0.1:8080/rooms | grep -q "Deluxe"
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/internal/events)" = "404"
-      - name: Show logs on failure
-        if: failure()
-        run: docker compose logs --tail=60

@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 // Tiny HTTP test client with a cookie jar, plus assertion helpers. Used by the e2e, concurrency and webhook tests.
-// Needs the stack running (scripts/dev-stack.sh start, or docker compose up).
+// Needs the stack running (Windows: scripts/dev-stack.ps1 start; Linux CI: scripts/dev-stack.sh start).
 require dirname(__DIR__, 2) . '/autoload.php';
 
 final class Client

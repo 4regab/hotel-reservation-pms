@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Run the four services and the job loop with the PHP built-in server (development and CI only;
-# production uses nginx + php-fpm, see docker-compose.yml). Needs a SQL Server reachable per scripts/dev-env.sh.
+# Run the four services and the job loop with the PHP built-in server (Linux CI only; on Windows use scripts/dev-stack.ps1). Needs a SQL Server reachable per scripts/dev-env.sh.
 # Usage: scripts/dev-stack.sh start|stop
 set -euo pipefail
 cd "$(dirname "$0")/.."

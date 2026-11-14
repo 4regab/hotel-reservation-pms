@@ -1,65 +1,92 @@
 # MA Hotel
 
-MA Hotel is a booking website and back office for a small hotel in Metro Manila with 45 rooms.
-Guests find a room, book it and pay online. Hotel staff use the same system to check guests in and out, clean rooms, handle payments and see reports.
+A booking website and back office for a small hotel in Metro Manila. Guests find a room, book it and pay online. Staff run the front desk, housekeeping, payments and reports from the same system.
 The hotel and every guest in it are made up, so you can try everything safely.
 
-<table><tr>
-<td width="74%"><img src="docs/screenshots/after/index-1280.jpg" alt="The MA Hotel home page on a computer"></td>
-<td width="26%"><img src="docs/screenshots/after/index-375.jpg" alt="The MA Hotel home page on a phone"></td>
-</tr></table>
+<img src="docs/screenshots/hero.jpg" alt="The MA Hotel home page">
 
-## What you can do
+## Run it
 
-**As a guest**
-- Look at the rooms and check which ones are free on your dates.
-- Book a room. It is kept for you for 10 minutes while you pay.
-- Pay by card, GCash or Maya, and get a confirmation by email.
-- See, print or cancel your bookings. Cancelling is free up to 48 hours before you arrive.
-- Ask the hotel for a copy of your personal details, to correct them or to delete them.
+You need Windows, [Git](https://git-scm.com), PHP 8.3+ with the `pdo_sqlsrv` extension, and SQL Server 2025 (Express is fine) with TCP on port 1433 and SQL Server and Windows Authentication mode on. The one-time setup is in [docs/SETUP.md](docs/SETUP.md).
 
-**As hotel staff** (each person only sees the tools for their job)
-- **Front desk:** today's arrivals and departures, check-in, check-out and walk-in guests.
-- **Housekeeping:** which rooms to clean. A second person checks each room before it goes back on sale.
-- **Cashier and manager:** payments, refunds, approvals and reports.
-- **IT:** staff accounts, an activity log (a record of who did what) and system health.
+```powershell
+git clone https://github.com/4regab/hotel-reservation-pms
+cd hotel-reservation-pms
+powershell -File scripts/dev-stack.ps1 start
+start http://127.0.0.1:8100
+```
 
-## Try it
+The first start creates the databases and fills the hotel with sample guests and bookings. Starting again keeps your data.
+To stop: `powershell -File scripts/dev-stack.ps1 stop`
 
-You need **Docker Desktop** (a free app that runs the whole system in one go).
+## Features
 
-1. Download this project and open a terminal in its folder.
-2. Copy the example settings file: `cp .env.example .env`
-3. Start everything: `docker compose up --build`
-4. Wait a few minutes, then open <http://localhost:8080>. The first start fills the hotel with sample guests and bookings.
+**Booking**
+- Live room search by dates, guests and rooms, with prices that include VAT.
+- Three room types: Standard, Deluxe (breakfast for two) and Suite (breakfast for four).
+- A room is held for 10 minutes while the guest pays. Stock is checked for every night, so a room is never sold twice.
+- Pay by card, GCash or Maya. A built-in test checkout stands in for PayMongo, and real PayMongo test mode is supported.
+- A confirmation email as soon as payment goes through.
+- Guest accounts with all bookings in one place. Print a booking or cancel it for free up to 48 hours before arrival.
+- Privacy tools: guests can ask for a copy of their data, correct it or delete it.
 
-The example settings are for trying it out only. [docs/SETUP.md](docs/SETUP.md) explains what to change for a real hotel.
+**Front desk**
+- Today's arrivals and departures, check-in and check-out, and walk-in bookings.
+- Early-arrival and no-show handling, with manager approval where money is involved.
+- Partner (OTA) room allotments and CSV import.
 
-**Payments are pretend.** Out of the box, the pay button opens a test checkout page that looks like a real one. No money moves. Test card numbers are listed on that page.
+**Housekeeping and maintenance**
+- A task board of rooms to clean. A second person inspects each room before it goes back on sale.
+- Maintenance can block a room for repairs, and the block is checked against bookings.
 
-## Demo logins
+**Money and reports**
+- Payments, refunds, exports and reports for cashiers and managers.
+- Late or repeated payment notices are handled safely: a payment is only counted once.
+- Nobody approves their own refund or export.
 
-Every demo account uses the password **`ma-hotel-demo`**.
+**Staff and safety**
+- Each person sees only the tools for their job (front desk, housekeeping, maintenance, cashier, manager, data steward, IT).
+- Staff sign in with a password and a 6-digit code.
+- An activity log of who did what, a system health page and a list of privacy requests for IT.
+- A data steward can find and merge duplicate guest records.
 
-| Sign in as | To try |
+## Test accounts
+
+Every account uses the password **`ma-hotel-demo`**.
+
+**Guests** need only the email and password.
+
+| Email | What to try |
 | --- | --- |
 | `guest@example.test` | Booking a room and your own bookings |
-| `reception@example.test` | The front desk |
-| `housekeeping@example.test` | Cleaning rooms |
-| `cashier@example.test` | Payments |
-| `manager@example.test` | Approvals and reports |
-| `it@example.test` | Staff accounts and the activity log |
+| `maribel.dizon@example.com` | A sample guest who already has bookings |
 
-Staff accounts also ask for a 6-digit code, like a bank app does. Add the code key `JBSWY3DPEHPK3PXP` to an authenticator app such as Google Authenticator, or see [docs/SETUP.md](docs/SETUP.md) for a command that prints the code.
-Never use these passwords anywhere real.
+**Staff** also need a 6-digit code, like a bank app. The code key is **`JBSWY3DPEHPK3PXP`**, the same for every staff account.
+
+| Email | Role | What to try |
+| --- | --- | --- |
+| `reception@example.test`, `reception2@example.test` | Front desk | Arrivals, check-in, check-out, walk-ins |
+| `housekeeping@example.test`, `housekeeping2@example.test` | Housekeeping | Clean rooms. One person cleans, the other inspects |
+| `maintenance@example.test` | Maintenance | Block a room for repairs |
+| `cashier@example.test` | Cashier | Payments, refund requests, exports |
+| `manager@example.test`, `manager2@example.test` | Manager | Approvals and reports. The second manager approves what the first asked for |
+| `steward@example.test` | Data steward | Possible duplicate guests |
+| `it@example.test` | IT | Staff accounts, activity log, system health, privacy requests |
+
+**Getting the 6-digit code.** Add the code key `JBSWY3DPEHPK3PXP` to an authenticator app such as Google Authenticator, or print the current code in PowerShell from the project folder (codes change every 30 seconds):
+
+```powershell
+php -r 'require "autoload.php"; echo Portal\Totp::code("JBSWY3DPEHPK3PXP", time()), "\n";'
+```
+
+**Payments are pretend.** The pay button opens a test checkout page and no money moves. Test cards are listed on that page, for example `4343 4343 4343 4345` pays successfully. Use any future expiry date and any 3-digit security code.
+Never use these passwords or this code key anywhere real.
 
 ## More detail
 
-- [docs/SETUP.md](docs/SETUP.md): running it with or without Docker, all settings, payment modes, deploying and backups.
+- [docs/SETUP.md](docs/SETUP.md): one-time setup, all settings, payment modes, troubleshooting, backups.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it is built, the business rules, the tests and known limits.
-- [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md): every main page on a phone, a tablet and a computer, before and after the redesign.
 - [docs/DESIGN.md](docs/DESIGN.md) and [docs/BRAND.md](docs/BRAND.md): the look of the site, the logo, colours and fonts.
-- [docs/UI-AUDIT.md](docs/UI-AUDIT.md): the page-by-page design check and what was fixed.
 
 ## License
 

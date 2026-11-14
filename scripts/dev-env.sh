@@ -1,4 +1,4 @@
-# Source this for local runs without Docker. Points at a SQL Server on 127.0.0.1 (default port 1433).
+# Source this for the Linux CI run (Windows uses scripts/dev-env.ps1). Points at a SQL Server on 127.0.0.1 (default port 1433).
 # Demo values only. Usage: source scripts/dev-env.sh
 # An empty DB_ADMIN_USER signs in to SQL Server with your Windows account; CI sets sa and its password.
 export DB_ADMIN_HOST=127.0.0.1 DB_ADMIN_PORT=${DB_ADMIN_PORT:-1433} DB_ADMIN_USER=${DB_ADMIN_USER:-} DB_ADMIN_PASS=${DB_ADMIN_PASS:-}
