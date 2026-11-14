@@ -18,6 +18,11 @@ final class Charts
         $w = 720;
         $h = 240;
         $l = 52;
+        $longest = 0;
+        for ($i = 0; $i <= 4; $i++) {
+            $longest = max($longest, strlen($fmt(self::niceMax($max ?? max(1.0, ...array_map(fn ($x) => (float) $x['value'], $bars ?: [['value' => 1]]))) * $i / 4)));
+        }
+        $l = max(44, $longest * 7 + 16);
         $r = 8;
         $t = 12;
         $b = 34;
@@ -33,7 +38,7 @@ final class Charts
         for ($i = 0; $i <= 4; $i++) {
             $y = $t + $ph - ($ph * $i / 4);
             $svg .= '<line x1="' . $l . '" x2="' . ($w - $r) . '" y1="' . round($y, 1) . '" y2="' . round($y, 1) . '" stroke="#e2e8f0" stroke-width="1"/>'
-                . '<text x="' . ($l - 6) . '" y="' . round($y + 4, 1) . '" text-anchor="end" font-size="11" fill="#475569">' . e($fmt($max * $i / 4)) . '</text>';
+                . '<text x="' . ($l - 6) . '" y="' . round($y + 4, 1) . '" text-anchor="end" font-size="12" fill="#475569">' . e($fmt($max * $i / 4)) . '</text>';
         }
         $every = max(1, (int) ceil($n / 9));
         foreach ($bars as $i => $bar) {
@@ -42,7 +47,7 @@ final class Charts
             $y = $t + $ph - $bh;
             $svg .= '<rect x="' . round($x, 1) . '" y="' . round($y, 1) . '" width="' . round($bw, 1) . '" height="' . round($bh, 1) . '" rx="2" fill="' . (!empty($bar['muted']) ? $mutedColor : $color) . '"><title>' . e($bar['label'] . ': ' . $fmt((float) $bar['value']) . (isset($bar['note']) ? ' (' . $bar['note'] . ')' : '')) . '</title></rect>';
             if ($i % $every === 0) {
-                $svg .= '<text x="' . round($x + $bw / 2, 1) . '" y="' . ($h - 14) . '" text-anchor="middle" font-size="11" fill="#475569">' . e(self::shortLabel($bar['label'])) . '</text>';
+                $svg .= '<text x="' . round($x + $bw / 2, 1) . '" y="' . ($h - 14) . '" text-anchor="middle" font-size="12" fill="#475569">' . e(self::shortLabel($bar['label'])) . '</text>';
             }
         }
         return $svg . '</svg>';

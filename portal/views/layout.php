@@ -18,10 +18,13 @@ if ($role === 'guest') {
     ];
     $links = array_merge($links, $byRole[$role] ?? []);
 }
+$showNav = $staff ? 'hidden items-center gap-1 xl:flex' : 'hidden items-center gap-1 lg:flex';
+$showActions = $staff ? 'hidden items-center gap-2 xl:flex' : 'hidden items-center gap-2 lg:flex';
+$hideMenu = $staff ? 'relative xl:hidden' : 'relative lg:hidden';
 $path = (string) parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 $navLink = function (array $l, string $extra = '') use ($path): string {
     $active = $path === $l[0] || ($l[0] !== '/' && $l[0] !== '/staff' && str_starts_with($path, $l[0] . '/'));
-    return '<a href="' . e($l[0]) . '" class="rounded-md px-3 py-2 text-sm font-medium ' . ($active ? 'bg-brand-800 text-white' : 'text-brand-50 hover:bg-brand-800') . ' ' . $extra . '"' . ($active ? ' aria-current="page"' : '') . '>' . e($l[1]) . '</a>';
+    return '<a href="' . e($l[0]) . '" class="whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium ' . ($active ? 'bg-brand-800 text-white' : 'text-brand-50 hover:bg-brand-800') . ' ' . $extra . '"' . ($active ? ' aria-current="page"' : '') . '>' . e($l[1]) . '</a>';
 };
 ?><!doctype html>
 <html lang="en">
@@ -40,24 +43,24 @@ $navLink = function (array $l, string $extra = '') use ($path): string {
 
 <header class="no-print bg-brand-900 text-white">
   <div class="container-page flex items-center justify-between gap-3 py-3">
-    <a href="/" class="flex items-center gap-2 text-lg font-bold tracking-tight text-white">
+    <a href="/" class="flex items-center gap-2 whitespace-nowrap text-lg font-bold tracking-tight text-white">
       <img src="/assets/img/logo.svg" alt="" class="size-8" width="32" height="32">
-      <span>HarborLight <span class="hidden font-normal text-brand-200 sm:inline">Hotels &amp; Resorts</span></span>
+      <span>HarborLight <span class="<?= $staff ? 'hidden font-normal text-brand-200 2xl:inline' : 'hidden font-normal text-brand-200 md:inline' ?>">Hotels &amp; Resorts</span></span>
     </a>
-    <nav aria-label="Main" class="hidden items-center gap-1 lg:flex">
+    <nav aria-label="Main" class="<?= $showNav ?>">
       <?php foreach ($links as $l) { echo $navLink($l); } ?>
     </nav>
-    <div class="hidden items-center gap-2 lg:flex">
+    <div class="<?= $showActions ?>">
       <?php if ($c->user() === null) { ?>
         <a href="/login" class="rounded-md px-3 py-2 text-sm font-medium text-brand-50 hover:bg-brand-800">Sign in</a>
         <a href="/register" class="btn btn-sm bg-lantern-400 text-slate-900 hover:bg-lantern-500">Create account</a>
       <?php } else { ?>
         <?php if ($staff) { ?><span class="badge badge-blue"><?= e(ucfirst($role)) ?></span><?php } ?>
         <a href="<?= $staff ? '/staff/account' : '/account/profile' ?>" class="rounded-md px-3 py-2 text-sm font-medium text-brand-50 hover:bg-brand-800"><?= e(explode(' ', (string) ($c->account()['full_name'] ?? 'Account'))[0]) ?></a>
-        <?= form_open($c, '/logout') ?><button class="rounded-md px-3 py-2 text-sm font-medium text-brand-50 hover:bg-brand-800">Sign out</button></form>
+        <?= form_open($c, '/logout') ?><button class="whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-brand-50 hover:bg-brand-800">Sign out</button></form>
       <?php } ?>
     </div>
-    <details class="relative lg:hidden">
+    <details class="<?= $hideMenu ?>">
       <summary class="flex size-11 cursor-pointer list-none items-center justify-center rounded-md hover:bg-brand-800" aria-label="Menu"><?= icon('menu', 'size-6') ?></summary>
       <div class="absolute right-0 z-40 mt-2 w-64 rounded-xl bg-brand-900 p-2 shadow-xl ring-1 ring-brand-700">
         <nav aria-label="Mobile" class="flex flex-col gap-1">

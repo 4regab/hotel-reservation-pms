@@ -17,10 +17,10 @@ $kpi = function (string $name, string $value, string $target, ?bool $ok, string 
   <?php if ($occ) { $t = $occ['totals']; ?>
     <ul class="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="Key figures">
       <li class="card card-pad"><p class="text-xs font-semibold uppercase text-slate-600">Occupancy</p><p class="mt-1 text-3xl font-bold text-brand-900"><?= e($pct($t['occupancy'])) ?></p><p class="text-xs text-slate-600"><?= e($t['roomNights']) ?> of <?= e($t['roomNightsAvailable']) ?> room-nights</p></li>
-      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-slate-600">ADR</p><p class="mt-1 text-3xl font-bold text-brand-900"><?= e(php_money($t['adrMinor'])) ?></p><p class="text-xs text-slate-600">average daily rate</p></li>
-      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-slate-600">RevPAR</p><p class="mt-1 text-3xl font-bold text-brand-900"><?= e(php_money($t['revparMinor'])) ?></p><p class="text-xs text-slate-600">revenue per available room</p></li>
-      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-slate-600">Room revenue</p><p class="mt-1 text-3xl font-bold text-brand-900"><?= e(php_money($t['revenueMinor'])) ?></p><p class="text-xs text-slate-600">booked nights in range</p></li>
-      <li class="card card-pad col-span-2 lg:col-span-1"><p class="text-xs font-semibold uppercase text-slate-600">Cash collected</p><p class="mt-1 text-3xl font-bold text-brand-900"><?= $rev ? e(php_money($rev['totals']['netMinor'])) : '-' ?></p><p class="text-xs text-slate-600">payments minus refunds<?= $rev ? ', to ' . e(d($rev['to'])) : '' ?></p></li>
+      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-slate-600">ADR</p><p class="mt-1 text-2xl font-bold text-brand-900 sm:text-3xl"><?= e(php_money($t['adrMinor'])) ?></p><p class="text-xs text-slate-600">average daily rate</p></li>
+      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-slate-600">RevPAR</p><p class="mt-1 text-2xl font-bold text-brand-900 sm:text-3xl"><?= e(php_money($t['revparMinor'])) ?></p><p class="text-xs text-slate-600">revenue per available room</p></li>
+      <li class="card card-pad"><p class="text-xs font-semibold uppercase text-slate-600">Room revenue</p><p class="mt-1 text-2xl font-bold text-brand-900 sm:text-3xl"><?= e($php0((float) $t['revenueMinor'])) ?></p><p class="text-xs text-slate-600">booked nights in range</p></li>
+      <li class="card card-pad col-span-2 lg:col-span-1"><p class="text-xs font-semibold uppercase text-slate-600">Cash collected</p><p class="mt-1 text-2xl font-bold text-brand-900 sm:text-3xl"><?= $rev ? e($php0((float) $rev['totals']['netMinor'])) : '-' ?></p><p class="text-xs text-slate-600">payments minus refunds<?= $rev ? ', to ' . e(d($rev['to'])) : '' ?></p></li>
     </ul>
 
     <?php
@@ -32,7 +32,7 @@ $kpi = function (string $name, string $value, string $target, ?bool $ok, string 
       <details class="mt-3"><summary class="link cursor-pointer text-sm">Show as a table</summary><div class="table-wrap mt-2 max-h-72 overflow-y-auto"><table class="table"><thead><tr><th scope="col">Night</th><th scope="col">Rooms sold</th><th scope="col">Occupancy</th><th scope="col">ADR</th><th scope="col">Revenue</th></tr></thead><tbody>
         <?php foreach ($occ['days'] as $x) { ?><tr><td><?= e(d($x['date'])) ?></td><td><?= e($x['roomsSold']) ?> of <?= e($x['roomsAvailable']) ?></td><td><?= e($pct($x['occupancy'])) ?></td><td><?= e(php_money($x['adrMinor'])) ?></td><td><?= e(php_money($x['revenueMinor'])) ?></td></tr><?php } ?></tbody></table></div></details>
     </section>
-    <div class="mt-6 grid gap-6 lg:grid-cols-2">
+    <div class="mt-6 grid gap-6">
       <section class="card card-pad" aria-labelledby="rv-h"><h2 id="rv-h" class="text-lg font-semibold">Room revenue by night</h2><div class="mt-3"><?= Charts::bars('Room revenue by night', 'Revenue from booked room-nights each night', $revBars, $php0, null, '#b45309', '#fcd34d') ?></div></section>
       <section class="card card-pad" aria-labelledby="ty-h"><h2 id="ty-h" class="text-lg font-semibold">By room type</h2>
         <div class="mt-3"><?= Charts::hbars('Room-nights by room type', 'Room-nights sold per room type in the range', array_map(fn ($x) => ['label' => $x['name'], 'value' => $x['roomNights']], $occ['byRoomType']), $whole) ?></div>
