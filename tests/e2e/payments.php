@@ -139,7 +139,7 @@ until(fn () => status($rid6) === 'CONFIRMED', '3-D Secure booking confirmed by t
 $acct8 = uuid();
 [$rid8, $sid8] = holdAndCheckout($acct8, $standard);
 foreach (['5100000000000198' => 'insufficient', '4200000000000018' => 'expired', '4300000000000017' => 'invalid_cvc', '4242424242424242' => 'not_test_card'] as $num => $why) {
-    [$s, $d] = $attempt($acct8, $sid8, $card($num));
+    [$s, $d] = $attempt($acct8, $sid8, $card((string) $num));
     check($s === 200 && $d['outcome'] === 'failed' && $d['reason'] === $why, "card {$num}: declined ({$why})");
 }
 check($paid($rid8) === 0 && status($rid8) === 'HELD', 'declined cards leave no payment and the room still held');
