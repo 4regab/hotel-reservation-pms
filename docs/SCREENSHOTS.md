@@ -49,6 +49,12 @@ They were rendered from the real page templates with sample data, not a live dat
 | **After** | <a href="screenshots/after/book-confirmed-375.jpg"><img src="screenshots/after/book-confirmed-375.jpg" width="120" alt="Booking confirmed, after the redesign, 375 px"></a> | <a href="screenshots/after/book-confirmed-768.jpg"><img src="screenshots/after/book-confirmed-768.jpg" width="180" alt="Booking confirmed, after the redesign, 768 px"></a> | <a href="screenshots/after/book-confirmed-1280.jpg"><img src="screenshots/after/book-confirmed-1280.jpg" width="260" alt="Booking confirmed, after the redesign, 1280 px"></a> |
 | **Before** | <a href="screenshots/before/book-confirmed-375.jpg"><img src="screenshots/before/book-confirmed-375.jpg" width="120" alt="Booking confirmed, before the redesign, 375 px"></a> | <a href="screenshots/before/book-confirmed-768.jpg"><img src="screenshots/before/book-confirmed-768.jpg" width="180" alt="Booking confirmed, before the redesign, 768 px"></a> | <a href="screenshots/before/book-confirmed-1280.jpg"><img src="screenshots/before/book-confirmed-1280.jpg" width="260" alt="Booking confirmed, before the redesign, 1280 px"></a> |
 
+### Test checkout (new, so there is no before)
+
+| 375 px | 768 px | 1280 px |
+| --- | --- | --- |
+| <a href="screenshots/after/mock-checkout-375.jpg"><img src="screenshots/after/mock-checkout-375.jpg" width="120" alt="Test checkout, 375 px"></a> | <a href="screenshots/after/mock-checkout-768.jpg"><img src="screenshots/after/mock-checkout-768.jpg" width="180" alt="Test checkout, 768 px"></a> | <a href="screenshots/after/mock-checkout-1280.jpg"><img src="screenshots/after/mock-checkout-1280.jpg" width="260" alt="Test checkout, 1280 px"></a> |
+
 ## Guest account
 
 ### Sign in

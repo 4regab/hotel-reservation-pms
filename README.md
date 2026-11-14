@@ -59,6 +59,7 @@ Never use these passwords anywhere real.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it is built, the business rules, the tests and known limits.
 - [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md): every main page on a phone, a tablet and a computer, before and after the redesign.
 - [docs/DESIGN.md](docs/DESIGN.md) and [docs/BRAND.md](docs/BRAND.md): the look of the site, the logo, colours and fonts.
+- [docs/UI-AUDIT.md](docs/UI-AUDIT.md): the page-by-page design check and what was fixed.
 
 ## License
 
