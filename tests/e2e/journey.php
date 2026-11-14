@@ -56,8 +56,18 @@ $room = array_values(array_filter($rooms['rooms'], fn ($r) => $r['roomId'] === $
 check($room['readiness'] === 'DIRTY', 'room is DIRTY after check-out');
 [$s, $x] = $hk->req('PATCH', "/v1/rooms/{$roomId}/status", ['status' => 'CLEANING', 'expectedVersion' => $room['version']]);
 check($s === 200, 'housekeeping starts cleaning');
-[$s, $x] = $hk->req('PATCH', "/v1/rooms/{$roomId}/status", ['status' => 'READY', 'expectedVersion' => $room['version'] + 1]);
-check($s === 200 && $x['readiness'] === 'READY', 'room is READY again');
+[$s, $tasks] = $hk->get('/v1/cleaning-tasks');
+$task = array_values(array_filter($tasks['tasks'], fn ($t) => $t['roomId'] === $roomId))[0];
+[$s, $x] = $hk->post("/v1/cleaning-tasks/{$task['taskId']}/clean");
+check($s === 200 && $x['status'] === 'CLEANED', 'cleaner marks the room clean');
+[$s, $x] = $hk->post("/v1/cleaning-tasks/{$task['taskId']}/inspect");
+check($s === 403 && $x['error']['code'] === 'SELF_INSPECTION', 'the cleaner cannot inspect their own work');
+$mgr = staff('manager');
+[$s, $x] = $mgr->post("/v1/cleaning-tasks/{$task['taskId']}/inspect");
+check($s === 200 && $x['status'] === 'DONE', 'a second person inspects and releases the room');
+[$s, $rooms] = $hk->get('/v1/rooms');
+$room = array_values(array_filter($rooms['rooms'], fn ($r) => $r['roomId'] === $roomId))[0];
+check($room['readiness'] === 'READY', 'room is READY again');
 until(fn () => ($guest->get("/v1/reservations/{$rid}")[1]['status'] ?? '') === 'CHECKED_OUT', 'reservation CHECKED_OUT');
 check(true, 'reservation reached CHECKED_OUT');
 
