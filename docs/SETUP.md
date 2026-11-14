@@ -13,7 +13,7 @@ For the short version, see the [README](../README.md).
 | PHP extensions `mbstring`, `curl` | bundled with PHP | `mbstring` is used for names and passwords. `curl` is used by the concurrency test, which sends 20 requests at once. |
 | Microsoft ODBC Driver 18 for SQL Server | 18.x | `pdo_sqlsrv` cannot connect without it. |
 | SQL Server | **2025** (Express or Developer is fine) | The tables use SQL Server 2025's native `JSON` column type, so older versions cannot run the migrations. |
-| Node.js | 22, **only to change styles** | The compiled CSS (`portal/public/assets/app.css`) is committed, so you do not need Node to run the site. |
+| Node.js | 22, **only to change styles** | The compiled CSS (`src/portal/public/assets/app.css`) is committed, so you do not need Node to run the site. |
 
 The other extensions the code uses (`json`, `openssl`, `pdo`, `session`) are part of every normal PHP build.
 
@@ -39,7 +39,7 @@ powershell -File scripts/dev-stack.ps1 start
 
 This one command:
 1. runs `scripts/migrate.php`: creates the four databases (`portal_db`, `booking_db`, `roomops_db`, `billing_db`) and one limited login per service if missing, then applies every new migration once;
-2. runs `portal/bin/ensure-admin.php`: creates the first IT account (`it@example.test`) if none exists;
+2. runs `src/portal/bin/ensure-admin.php`: creates the first IT account (`it@example.test`) if none exists;
 3. runs `scripts/seed-demo.php`: loads the demo staff, guests and about 135 days of bookings (only if there are no bookings yet);
 4. starts the site and the job loop (expires holds, delivers events, sends emails), then waits until every part answers `/healthz`.
 
@@ -81,7 +81,8 @@ No email is sent unless you set `$env:RESEND_API_KEY` before you start. Each ema
 ## 5. Run the tests
 
 ```powershell
-php tests/run.php                              # logic checks, no database needed
+php tests/unit/run.php                         # logic checks, no database needed
+php scripts/check-boundaries.php                # no service uses another service's code
 powershell -File scripts/dev-stack.ps1 start   # the end-to-end tests need the running site
 powershell -File tests/e2e/run-all.ps1         # journey, features, concurrency, payments
 ```
@@ -152,7 +153,7 @@ This project is set up for development and demos. PHP's built-in server is not m
 - Run each service (`portal`, `booking`, `roomops`, `billing`) behind a real web server with PHP-FPM or FastCGI, over HTTPS. Set `COOKIE_SECURE=1` and `PUBLIC_BASE_URL=https://...`.
 - Use strong, unique values for every secret and password, and skip the demo seed.
 - Keep the service ports private. Only the portal faces the internet, and `/internal/` must not be reachable from outside.
-- Run the job commands every minute (Windows Task Scheduler works): `php booking/bin/expire-holds.php`, each service's `bin/dispatch.php`, and `php portal/bin/send-notifications.php`.
+- Run the job commands every minute (Windows Task Scheduler works): `php src/booking/bin/expire-holds.php`, each service's `bin/dispatch.php`, and `php src/portal/bin/send-notifications.php`.
 - Payments: use `sandbox` first, then live keys. PayMongo shows card forms on its own page, so card numbers never touch this system.
 - Run `php scripts/migrate.php` after every upgrade. It applies new migrations once and is safe to repeat.
 

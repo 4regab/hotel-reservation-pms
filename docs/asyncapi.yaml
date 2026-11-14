@@ -8,7 +8,7 @@ info:
     to its inbox in the same transaction as its own update, so a retry is applied once. A 2xx answer means "committed". After 5 failed
     attempts a delivery is flagged for review and never deleted (see System health in the staff area).
     Guest contact details and card data are never in events: a service that needs them asks the owner over REST when it needs them.
-    Subscribers are taken from lib/src/Routing.php; a logic check keeps this file in step with it.
+    Subscribers are taken from src/shared/src/Routing.php; a logic check keeps this file in step with it.
 defaultContentType: application/json
 servers:
   booking: { url: 'http://booking:8000', protocol: http, description: Private network only. }

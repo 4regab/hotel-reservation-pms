@@ -82,10 +82,21 @@ php -r 'require "autoload.php"; echo Portal\Totp::code("JBSWY3DPEHPK3PXP", time(
 **Payments are pretend.** The pay button opens a test checkout page and no money moves. Test cards are listed on that page, for example `4343 4343 4343 4345` pays successfully. Use any future expiry date and any 3-digit security code.
 Never use these passwords or this code key anywhere real.
 
+## Repository layout
+
+```
+src/portal  src/booking  src/roomops  src/billing   the four services
+src/shared                                            code every service may use
+scripts/   tests/unit   tests/e2e   docs/
+```
+
+A service may use only the shared code and its own. `php scripts/check-boundaries.php` checks that, and CI runs it. Why the repository is laid out this way: [docs/adr](docs/adr).
+
 ## More detail
 
 - [docs/SETUP.md](docs/SETUP.md): one-time setup, all settings, payment modes, troubleshooting, backups.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it is built, the business rules, the tests and known limits.
+- [docs/adr](docs/adr): short records of the main design decisions.
 - [docs/DESIGN.md](docs/DESIGN.md) and [docs/BRAND.md](docs/BRAND.md): the look of the site, the logo, colours and fonts.
 
 ## License
