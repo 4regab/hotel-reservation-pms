@@ -13,7 +13,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: pdo_mysql
+          extensions: pdo_sqlsrv
       - name: Lint every PHP file (php -l)
         run: bash scripts/lint.sh
       - name: Logic checks (no database, no network)
@@ -37,38 +37,33 @@ jobs:
         run: git diff --exit-code portal/public/assets/app.css
 
   e2e:
-    name: End-to-end, concurrency and payment tests on MySQL 8
+    name: End-to-end, concurrency and payment tests on SQL Server 2025
     runs-on: ubuntu-latest
     services:
-      mysql:
-        image: mysql:8.0
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2025-latest
         env:
-          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          ACCEPT_EULA: 'Y'
+          MSSQL_PID: Express
+          MSSQL_SA_PASSWORD: Ci-only-sa-Passw0rd
         ports:
-          - 3306:3306
+          - 1433:1433
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
-          --health-interval=5s --health-timeout=5s --health-retries=20
+          --health-cmd="/opt/mssql-tools18/bin/sqlcmd -S 127.0.0.1 -U sa -P Ci-only-sa-Passw0rd -C -b -Q 'SELECT 1'"
+          --health-interval=5s --health-timeout=5s --health-retries=30 --health-start-period=20s
     env:
-      DB_ADMIN_PORT: '3306'
-      # The service container sees connections from the Docker gateway, not 127.0.0.1.
-      DB_APP_HOST_PATTERN: '%'
+      DB_ADMIN_PORT: '1433'
+      DB_ADMIN_USER: sa
+      DB_ADMIN_PASS: Ci-only-sa-Passw0rd
       RUN_DIR: ${{ github.workspace }}/.run
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: pdo_mysql
+          extensions: pdo_sqlsrv
       - name: Start the four services, run migrations and load demo data
         run: bash scripts/dev-stack.sh start
-      - name: "TEMP diagnostics: client address, accounts, app login"
-        run: |
-          php -r '$r = new PDO("mysql:host=127.0.0.1;port=3306", "root", "");
-          echo "root seen as: ", $r->query("SELECT USER()")->fetchColumn(), "\n";
-          foreach ($r->query("SELECT user, host, plugin FROM mysql.user ORDER BY user")->fetchAll(PDO::FETCH_NUM) as $u) echo implode(" ", $u), "\n";
-          $a = new PDO("mysql:host=127.0.0.1;port=3306", "billing_app", "dev-billing-pass");
-          echo "billing_app login: ", $a->query("SELECT CURRENT_USER()")->fetchColumn(), "\n";'
       - name: Full journey (search, hold, pay, confirm, email, check-in, check-out, cleaning, ready)
         run: bash -c 'source scripts/dev-env.sh && php tests/e2e/journey.php'
       - name: Business rules (approvals, no-show, OTA import, privacy, password reset, roles)
