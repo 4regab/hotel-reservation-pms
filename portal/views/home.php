@@ -37,8 +37,8 @@ $story = 'MA Hotel is forty-five rooms in Metro Manila, looked after by one team
       <h2 id="find-h" class="font-display text-2xl font-medium text-white sm:text-3xl">Plan your stay</h2>
       <p class="mt-1 text-sm text-white/85">Choose your dates to see which rooms are free.</p>
       <div class="mt-5 grid grid-cols-2 gap-2">
-        <div class="hero-well"><label class="label" for="h-in"><?= icon('calendar', 'size-4') ?> Check-in</label><input class="input" id="h-in" name="checkIn" type="date" required min="<?= e(today()) ?>" value="<?= e($form['checkIn']) ?>" data-checkin></div>
-        <div class="hero-well"><label class="label" for="h-out"><?= icon('calendar', 'size-4') ?> Check-out</label><input class="input" id="h-out" name="checkOut" type="date" required min="<?= e(plus_days(today(), 1)) ?>" value="<?= e($form['checkOut']) ?>" data-checkout></div>
+        <div class="hero-well col-span-2 sm:col-span-1"><label class="label" for="h-in"><?= icon('calendar', 'size-4') ?> Check-in</label><input class="input" id="h-in" name="checkIn" type="date" required min="<?= e(today()) ?>" value="<?= e($form['checkIn']) ?>" data-checkin></div>
+        <div class="hero-well col-span-2 sm:col-span-1"><label class="label" for="h-out"><?= icon('calendar', 'size-4') ?> Check-out</label><input class="input" id="h-out" name="checkOut" type="date" required min="<?= e(plus_days(today(), 1)) ?>" value="<?= e($form['checkOut']) ?>" data-checkout></div>
         <div class="hero-well"><label class="label" for="h-adults"><?= icon('users', 'size-4') ?> Guests</label><select class="input" id="h-adults" name="adults"><?php for ($i = 1; $i <= 8; $i++) { echo '<option value="' . $i . '"' . ($i === 2 ? ' selected' : '') . '>' . $i . ($i === 1 ? ' guest' : ' guests') . '</option>'; } ?></select></div>
         <div class="hero-well"><label class="label" for="h-rooms"><?= icon('bed', 'size-4') ?> Rooms</label><select class="input" id="h-rooms" name="rooms"><?php for ($i = 1; $i <= 5; $i++) { echo '<option value="' . $i . '"' . ($i === 1 ? ' selected' : '') . '>' . $i . ($i === 1 ? ' room' : ' rooms') . '</option>'; } ?></select></div>
       </div>

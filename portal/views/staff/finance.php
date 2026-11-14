@@ -39,7 +39,7 @@ $tabs = ['payments' => 'Payments', 'refunds' => 'Refunds', 'exports' => 'Account
   <p class="mt-4 text-sm text-ink-600">A refund request is approved by a manager who did not ask for it. Cashiers cannot approve their own requests.</p>
   <?php if ($refunds) { ?><div class="table-wrap mt-4"><table class="table"><caption class="sr-only">Refunds</caption>
     <thead><tr><th scope="col">Asked</th><th scope="col">Amount</th><th scope="col">Reason</th><th scope="col">Status</th><th scope="col">Note</th></tr></thead>
-    <tbody><?php foreach ($refunds as $r) { ?><tr><td class="whitespace-nowrap"><?= e(dt($r['createdAt'])) ?></td><td class="font-semibold"><?= e(php_money($r['amountMinor'])) ?></td><td><?= e(ucwords(strtolower(str_replace('_', ' ', $r['reason'])))) ?></td><td><?= badge($r['status']) ?></td><td><?= e($r['decisionNote'] ?? '') ?></td></tr><?php } ?></tbody></table></div>
+    <tbody><?php foreach ($refunds as $r) { ?><tr><td class="whitespace-nowrap"><?= e(dt($r['createdAt'])) ?></td><td class="whitespace-nowrap font-semibold"><?= e(php_money($r['amountMinor'])) ?></td><td><?= e(ucwords(strtolower(str_replace('_', ' ', $r['reason'])))) ?></td><td><?= badge($r['status']) ?></td><td><?= e($r['decisionNote'] ?? '') ?></td></tr><?php } ?></tbody></table></div>
   <?php } else { ?><div class="empty mt-4">No refunds yet.</div><?php } ?>
 
 <?php } else { ?>
@@ -49,7 +49,7 @@ $tabs = ['payments' => 'Payments', 'refunds' => 'Refunds', 'exports' => 'Account
   </form>
   <?php if ($exports) { ?><div class="table-wrap mt-4"><table class="table"><caption class="sr-only">Exports</caption>
     <thead><tr><th scope="col">Batch</th><th scope="col">Period</th><th scope="col">Lines</th><th scope="col">Net total</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Download</span></th></tr></thead>
-    <tbody><?php foreach ($exports as $x) { ?><tr><td class="font-mono text-xs"><?= e($x['batchRef']) ?><p class="break-all text-ink-600">sha256 <?= e(substr($x['checksum'], 0, 12)) ?>...</p></td><td class="whitespace-nowrap"><?= e(d($x['periodFrom'])) ?> to <?= e(d($x['periodTo'])) ?></td><td><?= e($x['rowCount']) ?></td><td class="font-semibold"><?= e(php_money($x['totalMinor'])) ?></td><td><?= badge($x['status']) ?></td>
+    <tbody><?php foreach ($exports as $x) { ?><tr><td class="font-mono text-xs"><?= e($x['batchRef']) ?><p class="break-all text-ink-600">sha256 <?= e(substr($x['checksum'], 0, 12)) ?>...</p></td><td class="whitespace-nowrap"><?= e(d($x['periodFrom'])) ?> to <?= e(d($x['periodTo'])) ?></td><td><?= e($x['rowCount']) ?></td><td class="whitespace-nowrap font-semibold"><?= e(php_money($x['totalMinor'])) ?></td><td><?= badge($x['status']) ?></td>
       <td><?php if ($x['status'] === 'APPROVED') { ?><a class="btn btn-primary btn-sm" href="/staff/finance/exports/<?= e($x['exportId']) ?>/download"><?= icon('download', 'size-4') ?> CSV<span class="sr-only"> <?= e($x['batchRef']) ?></span></a><?php } elseif ($x['status'] === 'REQUESTED') { echo $mgr && $x['requestedBy'] !== $me ? '<a class="link" href="/staff/approvals">Approve</a>' : '<span class="text-xs text-ink-600">Waiting for a manager</span>'; } ?></td></tr><?php } ?></tbody></table></div>
   <?php } else { ?><div class="empty mt-4">No exports yet.</div><?php } ?>
 <?php } ?>

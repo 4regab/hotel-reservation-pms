@@ -1,6 +1,6 @@
 <?php /** @var Portal\Web\Ctx $c @var array $r @var array $cancel @var ?array $receipt */ ?>
 <div class="container-page max-w-3xl pb-4 pt-8 sm:pt-10">
-  <nav aria-label="Breadcrumb" class="text-sm text-ink-600"><a class="link" href="/account">My bookings</a> <span aria-hidden="true">/</span> <?= e($r['code']) ?></nav>
+  <nav aria-label="Breadcrumb" class="flex items-center text-sm text-ink-600"><a class="link inline-flex min-h-11 items-center" href="/account">My bookings</a> <span aria-hidden="true">/</span> <?= e($r['code']) ?></nav>
   <h1 class="page-title mt-2">Booking <?= e($r['code']) ?></h1>
   <?php include __DIR__ . '/partials/booking_summary.php'; ?>
 
@@ -17,8 +17,8 @@
   <?php if ($receipt && ($receipt['payments'] || $receipt['refunds'])) { ?>
     <section class="card card-pad mt-6" aria-labelledby="pay-h"><h2 id="pay-h" class="text-lg font-semibold">Payments</h2>
       <ul class="mt-3 divide-y divide-ink-100 text-sm">
-        <?php foreach ($receipt['payments'] as $p) { ?><li class="flex justify-between gap-3 py-2"><span>Payment received <?= e(dt($p['createdAt'])) ?></span><span class="font-medium"><?= e(php_money($p['amountMinor'])) ?></span></li><?php } ?>
-        <?php foreach ($receipt['refunds'] as $p) { ?><li class="flex justify-between gap-3 py-2"><span>Refund <?= badge($p['status']) ?></span><span class="font-medium">-<?= e(php_money($p['amountMinor'])) ?></span></li><?php } ?>
+        <?php foreach ($receipt['payments'] as $p) { ?><li class="flex justify-between gap-3 py-2"><span>Payment received <?= e(dt($p['createdAt'])) ?></span><span class="whitespace-nowrap font-medium"><?= e(php_money($p['amountMinor'])) ?></span></li><?php } ?>
+        <?php foreach ($receipt['refunds'] as $p) { ?><li class="flex justify-between gap-3 py-2"><span>Refund <?= badge($p['status']) ?></span><span class="whitespace-nowrap font-medium">-<?= e(php_money($p['amountMinor'])) ?></span></li><?php } ?>
       </ul>
     </section>
   <?php } ?>

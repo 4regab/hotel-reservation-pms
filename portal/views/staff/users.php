@@ -5,7 +5,7 @@ $roles = ['reception' => 'Reception', 'housekeeping' => 'Housekeeping', 'mainten
   <p class="mt-1 text-ink-600">Every change here is written to the audit log. Role changes and disabling sign the person out everywhere.</p>
 
   <details class="card card-pad mt-6" <?= $accounts ? '' : 'open' ?>>
-    <summary class="cursor-pointer text-lg font-semibold">Create a staff account</summary>
+    <summary class="flex min-h-11 cursor-pointer items-center text-lg font-semibold">Create a staff account</summary>
     <?= form_open($c, '/staff/admin/users', 'mt-4 grid gap-4 sm:grid-cols-2') ?>
       <?= field('Full name', 'fullName', 'text', '', 'required maxlength="120"') ?>
       <?= field('Work email', 'email', 'email', '', 'required maxlength="160"') ?>
@@ -18,7 +18,7 @@ $roles = ['reception' => 'Reception', 'housekeeping' => 'Housekeeping', 'mainten
 
   <form method="get" action="/staff/admin/users" class="mt-6 flex flex-wrap items-end gap-3" role="search">
     <div><label class="label" for="f-role">Role</label><select class="input" id="f-role" name="role"><option value="">All roles</option><option value="guest"<?= $role === 'guest' ? ' selected' : '' ?>>Guests</option><?php foreach ($roles as $k => $l) { ?><option value="<?= e($k) ?>"<?= $role === $k ? ' selected' : '' ?>><?= e($l) ?></option><?php } ?></select></div>
-    <div class="min-w-0 flex-1 sm:max-w-xs"><label class="label" for="f-q">Name or email</label><input class="input" id="f-q" name="q" value="<?= e($q) ?>"></div>
+    <div class="w-full sm:w-auto sm:min-w-64 sm:flex-1 sm:max-w-xs"><label class="label" for="f-q">Name or email</label><input class="input" id="f-q" name="q" value="<?= e($q) ?>"></div>
     <button class="btn btn-secondary">Filter</button>
   </form>
 
@@ -34,7 +34,7 @@ $roles = ['reception' => 'Reception', 'housekeeping' => 'Housekeeping', 'mainten
           <td>
             <div class="flex flex-wrap items-end gap-2">
               <?php if ($staff && !$self) { ?>
-                <?= form_open($c, '/staff/admin/users/' . $a['account_id'] . '/role', 'flex items-end gap-1') ?><label class="sr-only" for="r-<?= e($a['account_id']) ?>">Role for <?= e($a['full_name']) ?></label><select class="input min-h-9 py-1 text-sm" id="r-<?= e($a['account_id']) ?>" name="role"><?php foreach ($roles as $k => $l) { ?><option value="<?= e($k) ?>"<?= $a['role'] === $k ? ' selected' : '' ?>><?= e($l) ?></option><?php } ?></select><button class="btn btn-secondary btn-sm">Change</button></form>
+                <?= form_open($c, '/staff/admin/users/' . $a['account_id'] . '/role', 'flex items-end gap-1') ?><label class="sr-only" for="r-<?= e($a['account_id']) ?>">Role for <?= e($a['full_name']) ?></label><select class="input py-1 text-sm" id="r-<?= e($a['account_id']) ?>" name="role"><?php foreach ($roles as $k => $l) { ?><option value="<?= e($k) ?>"<?= $a['role'] === $k ? ' selected' : '' ?>><?= e($l) ?></option><?php } ?></select><button class="btn btn-secondary btn-sm">Change</button></form>
               <?php } ?>
               <?php if (!$self) { echo form_open($c, '/staff/admin/users/' . $a['account_id'] . '/active', 'inline', (int) $a['active'] ? 'data-confirm="Disable ' . e($a['full_name']) . '? They are signed out at once."' : '') . '<input type="hidden" name="active" value="' . ((int) $a['active'] ? '0' : '1') . '"><button class="btn btn-sm ' . ((int) $a['active'] ? 'btn-ghost' : 'btn-secondary') . '">' . ((int) $a['active'] ? 'Disable' : 'Enable') . '<span class="sr-only"> ' . e($a['full_name']) . '</span></button></form>'; } ?>
               <?php if ($staff) { echo form_open($c, '/staff/admin/users/' . $a['account_id'] . '/totp', 'inline', 'data-confirm="Make a new second-factor secret? The old one stops working."') . '<input type="hidden" name="email" value="' . e($a['email']) . '"><button class="btn btn-ghost btn-sm">Reset 2FA<span class="sr-only"> for ' . e($a['full_name']) . '</span></button></form>'; } ?>

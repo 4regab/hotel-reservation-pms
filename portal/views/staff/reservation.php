@@ -2,7 +2,7 @@
 $role = $c->role(); $id = $r['reservationId']; $today = today();
 $isFront = in_array($role, ['reception', 'manager'], true); ?>
 <div class="container-page max-w-5xl pb-4 pt-8 sm:pt-10">
-  <nav aria-label="Breadcrumb" class="text-sm text-ink-600"><a class="link" href="/staff/reception">Front desk</a> <span aria-hidden="true">/</span> <?= e($r['code']) ?></nav>
+  <nav aria-label="Breadcrumb" class="flex items-center text-sm text-ink-600"><a class="link inline-flex min-h-11 items-center" href="/staff/reception">Front desk</a> <span aria-hidden="true">/</span> <?= e($r['code']) ?></nav>
   <h1 class="page-title mt-2">Booking <?= e($r['code']) ?> <?= badge($r['status']) ?></h1>
 
   <div class="mt-6 grid gap-6 lg:grid-cols-3">

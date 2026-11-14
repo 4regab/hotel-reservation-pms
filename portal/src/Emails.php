@@ -65,7 +65,7 @@ final class Emails
         $tr = '';
         $textRows = '';
         foreach ($rows as $k => $v) {
-            $tr .= '<tr><td style="padding:10px 0;color:#454f6e;font-size:14px;border-bottom:1px solid #e6e8ef">' . $e($k) . '</td><td style="padding:10px 0;color:#1f2b4d;font-size:14px;font-weight:600;text-align:right;border-bottom:1px solid #e6e8ef">' . $e($v) . '</td></tr>';
+            $tr .= '<tr><td style="padding:10px 16px 10px 0;color:#454f6e;font-size:14px;white-space:nowrap;vertical-align:top;border-bottom:1px solid #e6e8ef">' . $e($k) . '</td><td style="padding:10px 0;color:#1f2b4d;font-size:14px;font-weight:600;text-align:right;border-bottom:1px solid #e6e8ef">' . $e($v) . '</td></tr>';
             $textRows .= "{$k}: {$v}\n";
         }
         // Colours and fonts follow docs/BRAND.md. Email clients ignore web fonts and many block SVG, so the logo is the PNG mark plus text.
