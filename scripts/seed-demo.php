@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * Demo data for HarborLight: staff accounts for every role, about 40 fictional guests, and roughly 90 days of
+ * Demo data for MA Hotel: staff accounts for every role, about 40 fictional guests, and roughly 90 days of
  * bookings, payments, stays, cleaning, refunds and exports so the dashboards and reports look alive.
  * All names, emails and phone numbers are invented. Accounts use the demo password from DEMO_PASSWORD. DEMO USE ONLY.
  *
@@ -90,7 +90,7 @@ if ($reset) {
 }
 
 // ------------------------------------------------------------------------------------------------ accounts
-$pass = getenv('DEMO_PASSWORD') ?: 'harborlight-demo';
+$pass = getenv('DEMO_PASSWORD') ?: 'ma-hotel-demo';
 $totp = getenv('DEMO_TOTP_SECRET') ?: 'JBSWY3DPEHPK3PXP';
 $hash = password_hash($pass, PASSWORD_DEFAULT);
 $staffDefs = [

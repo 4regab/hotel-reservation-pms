@@ -1,5 +1,5 @@
 {
-  "name": "harborlight-portal-assets",
+  "name": "ma-hotel-portal-assets",
   "private": true,
   "description": "Build-time only: compiles Tailwind CSS. The compiled file is committed, so the site needs no Node to run.",
   "scripts": {

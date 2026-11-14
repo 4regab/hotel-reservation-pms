@@ -11,7 +11,7 @@ use Lib\Uuid;
 /**
  * Sends email through the Resend HTTPS API when RESEND_API_KEY is set. With no key the message is only written to the
  * email_log table (status LOGGED) so the whole flow works offline. Every email that is sent or logged is recorded in email_log.
- * Env: RESEND_API_KEY, MAIL_FROM (for example "HarborLight Hotels <reservations@your-domain.example>").
+ * Env: RESEND_API_KEY, MAIL_FROM (for example "MA Hotel <reservations@your-domain.example>").
  */
 final class Mailer
 {

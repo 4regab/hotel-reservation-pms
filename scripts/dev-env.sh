@@ -12,6 +12,6 @@ for from in PORTAL BOOKING ROOMOPS BILLING; do for to in PORTAL BOOKING ROOMOPS 
   [ "$from" != "$to" ] && export TOKEN_${from}_TO_${to}=dev-pair-$(echo "$from-$to" | tr 'A-Z' 'a-z')
 done; done
 export QUOTE_SECRET=dev-quote-secret PAYMONGO_MODE=mock PAYMONGO_WEBHOOK_SECRET=dev-webhook-secret
-export PUBLIC_BASE_URL=http://127.0.0.1:8100 DEMO_PASSWORD=harborlight-demo DEMO_TOTP_SECRET=JBSWY3DPEHPK3PXP COOKIE_SECURE=0
+export PUBLIC_BASE_URL=http://127.0.0.1:8100 DEMO_PASSWORD=ma-hotel-demo DEMO_TOTP_SECRET=JBSWY3DPEHPK3PXP COOKIE_SECURE=0
 export ADMIN_EMAIL=${ADMIN_EMAIL:-it@example.test}
 export PHP_BIN=${PHP_BIN:-php}

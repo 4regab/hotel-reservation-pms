@@ -1,6 +1,6 @@
-# HarborLight Hotels & Resorts: reservations and property management
+# MA Hotel: reservations and property management
 
-A working website and back office for **HarborLight Hotels & Resorts**, a fictional 45-room hotel in Metro Manila
+A working website and back office for **MA Hotel**, a fictional 45-room hotel in Metro Manila
 (20 Standard, 15 Deluxe, 10 Suite). Guests search, book and pay online. Staff run the front desk, housekeeping,
 payments, partner bookings, reports and privacy requests from the same system.
 
@@ -93,7 +93,7 @@ For a real hotel set `SEED_DEMO=0`, `COOKIE_SECURE=1`, a real `PUBLIC_BASE_URL`,
 
 ### Demo accounts (demo data only)
 
-With `SEED_DEMO=1` every account below uses the password `harborlight-demo` (`DEMO_PASSWORD`). Staff also need a 6-digit code.
+With `SEED_DEMO=1` every account below uses the password `ma-hotel-demo` (`DEMO_PASSWORD`). Staff also need a 6-digit code.
 The demo authenticator secret is `JBSWY3DPEHPK3PXP` (`DEMO_TOTP_SECRET`). Add it to an authenticator app, or print the current code:
 
 ```bash
@@ -187,7 +187,9 @@ the four end-to-end suites on a **SQL Server 2025** service container, and a Doc
 - [`docs/openapi.yaml`](docs/openapi.yaml): every public `/v1` operation with the roles allowed. **Generated** from the routes and roles by `php scripts/gen-openapi.php`; a logic check fails if it is out of date.
 - [`docs/asyncapi.yaml`](docs/asyncapi.yaml): the nine events, who publishes and who consumes them. A logic check compares it with `lib/src/Routing.php`.
 - **Design system:** Tailwind CSS v4 with Tailwind's built-in breakpoints only (`sm` 640, `md` 768, `lg` 1024, `xl` 1280). Mobile first. Source `portal/assets/app.src.css`; compiled file `portal/public/assets/app.css` is committed.
-  To change styles: `npm install && npm run build:css`. Pages ship no inline script or style (strict Content-Security-Policy). The room and hero pictures are SVG drawings made for this project in `portal/public/assets/img`.
+  To change styles: `npm install && npm run build:css`. Pages ship no inline script or style (strict Content-Security-Policy).
+  Tokens (ink, canvas, clay, dusk), components and the page-by-page plan are in [`docs/DESIGN.md`](docs/DESIGN.md). Logo, colours and fonts are in [`docs/BRAND.md`](docs/BRAND.md).
+  Fonts (Inter and Inter Tight, SIL Open Font License) are self-hosted in `portal/public/assets/fonts`; no font or script comes from a CDN.
 - **Accessibility:** semantic HTML, labelled fields, visible focus, skip link, keyboard-operable menus (native `<details>`), `aria-live` for the hold countdown and messages, charts with titles and text tables, motion off for people who ask for reduced motion, hover effects only on devices that hover.
 
 ## Directory map
@@ -213,7 +215,7 @@ docs/                                OpenAPI, AsyncAPI, screenshots
 - **Retention rules** (profiles 24 months after the last stay, abandoned-hold contacts 30 days) are not run automatically. Deletion is done per request by the privacy lead.
 - **No marketing email.** Marketing consent is stored separately from booking consent, but nothing sends offers.
 - **Access control is by role, not by hotel property.** The system serves one hotel.
-- **Accessibility** was built in and checked by eye and by keyboard reasoning, with no automated audit (such as axe) run. Colors were chosen for AA contrast but not measured.
+- **Accessibility** was built in and checked by eye and by keyboard reasoning, with no automated audit (such as axe) run. Text colour pairs were measured against WCAG AA (4.5:1) when the palette was chosen; see `docs/BRAND.md`.
 - **Browsers:** checked in Chrome only (desktop width, 768 and 375 px). Scroll-driven reveals need a recent Chrome or Safari and simply show the content in other browsers.
 - **Images** are CC0 stock photographs (credits in `docs/IMAGE-CREDITS.md`). The room photos are not of a real property. Replace `portal/public/assets/img/room-*.webp` with your own before launch.
 

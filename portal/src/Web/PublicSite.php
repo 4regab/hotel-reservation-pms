@@ -246,7 +246,7 @@ final class PublicSite
             }
             $c->accounts->register($v + ['password' => (string) ($_POST['password'] ?? ''), 'marketingConsent' => $c->postFlag('marketing')], $c->req->ip());
             $c->auth->attempt($v['email'], (string) $_POST['password'], '', $c->req->ip());
-            $c->flash('ok', 'Welcome to HarborLight. Your account is ready.');
+            $c->flash('ok', 'Welcome to MA Hotel. Your account is ready.');
             return View::redirect(self::safeNext($c->post('next')) ?? '/account');
         } catch (ApiException $e) {
             return View::page($c, 'register', ['v' => $v, 'error' => Ctx::friendly($e), 'next' => $c->post('next')], 'Create your account', $e->status === 409 ? 409 : 422);

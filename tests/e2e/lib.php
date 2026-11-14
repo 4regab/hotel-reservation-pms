@@ -59,7 +59,7 @@ final class Client
         return $this->req('POST', $p, $b, $idem ? ['Idempotency-Key: ' . $idem] : []);
     }
 
-    public function login(string $email, string $password = 'harborlight-demo', ?string $totpSecret = null): void
+    public function login(string $email, string $password = 'ma-hotel-demo', ?string $totpSecret = null): void
     {
         $b = ['email' => $email, 'password' => $password];
         if ($totpSecret !== null) {
@@ -79,7 +79,7 @@ function base(): string
 function staff(string $role): Client
 {
     $c = new Client(base());
-    $c->login("{$role}@example.test", getenv('DEMO_PASSWORD') ?: 'harborlight-demo', getenv('DEMO_TOTP_SECRET') ?: 'JBSWY3DPEHPK3PXP');
+    $c->login("{$role}@example.test", getenv('DEMO_PASSWORD') ?: 'ma-hotel-demo', getenv('DEMO_TOTP_SECRET') ?: 'JBSWY3DPEHPK3PXP');
     return $c;
 }
 

@@ -59,7 +59,7 @@ final class GuestSite
         if ($c->q('download') === '1') {
             $css = (string) @file_get_contents(dirname(__DIR__, 2) . '/public/assets/app.css');
             $page = View::page($c, 'doc_confirmation', ['r' => $r, 'inlineCss' => $css, 'description' => ''], 'Confirmation ' . $r['code'], 200, 'layout_doc');
-            return View::download($page[1], 'HarborLight-' . $r['code'] . '.html', 'text/html; charset=utf-8');
+            return View::download($page[1], 'MA-Hotel-' . $r['code'] . '.html', 'text/html; charset=utf-8');
         }
         return View::page($c, 'doc_confirmation', ['r' => $r, 'inlineCss' => ''], 'Confirmation ' . $r['code'], 200, 'layout_doc');
     }
@@ -115,6 +115,6 @@ final class GuestSite
     public static function privacyDownload(Ctx $c, string $id): array
     {
         $u = $c->require('guest');
-        return View::download($c->privacy->result($id, $u['accountId']), 'my-harborlight-data.json', 'application/json');
+        return View::download($c->privacy->result($id, $u['accountId']), 'my-ma-hotel-data.json', 'application/json');
     }
 }

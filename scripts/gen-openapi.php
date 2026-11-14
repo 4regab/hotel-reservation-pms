@@ -99,7 +99,7 @@ function buildOpenApi(): string
     $y = <<<'YAML'
 openapi: 3.0.3
 info:
-  title: HarborLight Hotels - Portal API
+  title: MA Hotel - Portal API
   version: 2.0.0
   description: |
     The public JSON API of the portal. The website uses the same services; this API is for integrations and tests.
