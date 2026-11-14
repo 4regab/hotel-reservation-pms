@@ -237,16 +237,16 @@ final class FinanceService
     {
         [$from, $to] = self::range($q);
         $day = sprintf(self::MANILA, 'created_at');
-        $pay = $this->pdo->prepare("SELECT {$day} AS day, COALESCE(method, provider) AS method, SUM(amount_minor) AS total, COUNT(*) AS n FROM payment WHERE status = 'CAPTURED' AND {$day} BETWEEN ? AND ? GROUP BY day, method");
+        $pay = $this->pdo->prepare("SELECT {$day} AS day, COALESCE(method, provider) AS pay_method, SUM(amount_minor) AS total, COUNT(*) AS n FROM payment WHERE status = 'CAPTURED' AND {$day} BETWEEN ? AND ? GROUP BY {$day}, pay_method");
         $pay->execute([$from, $to]);
         $rdy = sprintf(self::MANILA, 'completed_at');
-        $ref = $this->pdo->prepare("SELECT {$rdy} AS day, SUM(amount_minor) AS total FROM refund WHERE status = 'COMPLETED' AND {$rdy} BETWEEN ? AND ? GROUP BY day");
+        $ref = $this->pdo->prepare("SELECT {$rdy} AS day, SUM(amount_minor) AS total FROM refund WHERE status = 'COMPLETED' AND {$rdy} BETWEEN ? AND ? GROUP BY {$rdy}");
         $ref->execute([$from, $to]);
         $perDay = [];
         $byMethod = [];
         foreach ($pay->fetchAll() as $r) {
             $perDay[$r['day']]['payments'] = ($perDay[$r['day']]['payments'] ?? 0) + (int) $r['total'];
-            $byMethod[$r['method']] = ($byMethod[$r['method']] ?? 0) + (int) $r['total'];
+            $byMethod[$r['pay_method']] = ($byMethod[$r['pay_method']] ?? 0) + (int) $r['total'];
         }
         foreach ($ref->fetchAll() as $r) {
             $perDay[$r['day']]['refunds'] = (int) $r['total'];

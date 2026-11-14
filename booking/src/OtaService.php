@@ -201,6 +201,9 @@ final class OtaService
         if (!Dates::isDate($ci) || !Dates::isDate($co) || $co <= $ci) {
             throw new ApiException(422, 'ROW', 'check_in and check_out must be YYYY-MM-DD with check_out after check_in');
         }
+        if ($ci < Dates::manilaToday()) {
+            throw new ApiException(422, 'ROW', 'check_in is in the past');
+        }
         $nights = Dates::nights($ci, $co);
         if (count($nights) > Dates::MAX_NIGHTS) {
             throw new ApiException(422, 'ROW', 'Stay is longer than ' . Dates::MAX_NIGHTS . ' nights');
