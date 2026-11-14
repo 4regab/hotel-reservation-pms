@@ -1,0 +1,142 @@
+# HarborLight Hotels: portal + three services + one MySQL server (four databases).
+# Run: docker compose up --build     then open http://localhost:8080
+x-db-defaults: &db-defaults
+  MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-me-root}
+  BOOKING_DB_NAME: ${BOOKING_DB_NAME:-booking_db}
+  BOOKING_DB_USER: ${BOOKING_DB_USER:-booking_app}
+  BOOKING_DB_PASS: ${BOOKING_DB_PASS:-change-me-booking}
+  ROOMOPS_DB_NAME: ${ROOMOPS_DB_NAME:-roomops_db}
+  ROOMOPS_DB_USER: ${ROOMOPS_DB_USER:-roomops_app}
+  ROOMOPS_DB_PASS: ${ROOMOPS_DB_PASS:-change-me-roomops}
+  BILLING_DB_NAME: ${BILLING_DB_NAME:-billing_db}
+  BILLING_DB_USER: ${BILLING_DB_USER:-billing_app}
+  BILLING_DB_PASS: ${BILLING_DB_PASS:-change-me-billing}
+  PORTAL_DB_NAME: ${PORTAL_DB_NAME:-portal_db}
+  PORTAL_DB_USER: ${PORTAL_DB_USER:-portal_app}
+  PORTAL_DB_PASS: ${PORTAL_DB_PASS:-change-me-portal}
+
+# Private network addresses and service credentials.
+# ponytail: every container gets all four credentials; give each service only the ones it needs in production.
+x-peers: &peers
+  BOOKING_URL: http://booking:8000
+  ROOMOPS_URL: http://roomops:8000
+  BILLING_URL: http://billing:8000
+  PORTAL_URL: http://portal:8000
+  TOKEN_PORTAL: ${TOKEN_PORTAL:-change-me-portal-credential}
+  TOKEN_BOOKING: ${TOKEN_BOOKING:-change-me-booking-credential}
+  TOKEN_ROOMOPS: ${TOKEN_ROOMOPS:-change-me-roomops-credential}
+  TOKEN_BILLING: ${TOKEN_BILLING:-change-me-billing-credential}
+
+x-paymongo: &paymongo
+  PAYMONGO_MODE: ${PAYMONGO_MODE:-mock}
+  PAYMONGO_SECRET_KEY: ${PAYMONGO_SECRET_KEY:-}
+  PAYMONGO_WEBHOOK_SECRET: ${PAYMONGO_WEBHOOK_SECRET:-whsk_demo_only}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/php/Dockerfile
+  restart: unless-stopped
+  depends_on:
+    mysql:
+      condition: service_healthy
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      <<: *db-defaults
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql/init.sh:/docker-entrypoint-initdb.d/00-init.sh:ro
+      - ./booking/migrations:/migrations/booking:ro
+      - ./roomops/migrations:/migrations/roomops:ro
+      - ./billing/migrations:/migrations/billing:ro
+      - ./portal/migrations:/migrations/portal:ro
+    healthcheck:
+      # 127.0.0.1 on purpose: the temporary init server has no network, so this only passes once MySQL is really up.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  booking:
+    <<: *app
+    command: php -S 0.0.0.0:8000 -t booking/public booking/public/index.php
+    environment:
+      <<: *peers
+      BOOKING_DB_HOST: mysql
+      BOOKING_DB_NAME: ${BOOKING_DB_NAME:-booking_db}
+      BOOKING_DB_USER: ${BOOKING_DB_USER:-booking_app}
+      BOOKING_DB_PASS: ${BOOKING_DB_PASS:-change-me-booking}
+      QUOTE_SECRET: ${QUOTE_SECRET:-change-me-quote-signing-secret}
+
+  roomops:
+    <<: *app
+    command: php -S 0.0.0.0:8000 -t roomops/public roomops/public/index.php
+    environment:
+      <<: *peers
+      ROOMOPS_DB_HOST: mysql
+      ROOMOPS_DB_NAME: ${ROOMOPS_DB_NAME:-roomops_db}
+      ROOMOPS_DB_USER: ${ROOMOPS_DB_USER:-roomops_app}
+      ROOMOPS_DB_PASS: ${ROOMOPS_DB_PASS:-change-me-roomops}
+
+  billing:
+    <<: *app
+    command: php -S 0.0.0.0:8000 -t billing/public billing/public/index.php
+    environment:
+      <<: [*peers, *paymongo]
+      BILLING_DB_HOST: mysql
+      BILLING_DB_NAME: ${BILLING_DB_NAME:-billing_db}
+      BILLING_DB_USER: ${BILLING_DB_USER:-billing_app}
+      BILLING_DB_PASS: ${BILLING_DB_PASS:-change-me-billing}
+
+  portal:
+    <<: *app
+    command: sh -c "php portal/bin/seed.php && exec php -S 0.0.0.0:8000 -t portal/public portal/public/index.php"
+    ports:
+      - "8080:8000"
+    environment:
+      <<: [*peers, *paymongo]
+      PORTAL_DB_HOST: mysql
+      PORTAL_DB_NAME: ${PORTAL_DB_NAME:-portal_db}
+      PORTAL_DB_USER: ${PORTAL_DB_USER:-portal_app}
+      PORTAL_DB_PASS: ${PORTAL_DB_PASS:-change-me-portal}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-harborlight-demo}
+      DEMO_TOTP_SECRET: ${DEMO_TOTP_SECRET:-JBSWY3DPEHPK3PXP}
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}
+
+  # Scheduled PHP CLI jobs, every 5 seconds in the demo:
+  #   expire 10-minute holds, deliver outbox events (and retry failures), send queued emails.
+  # ponytail: a loop in one container; use real cron (every minute) in production.
+  jobs:
+    <<: *app
+    command: >
+      sh -c "while true; do
+      php booking/bin/expire-holds.php;
+      for s in booking roomops billing; do php $$s/bin/dispatch.php; done;
+      php portal/bin/send-notifications.php;
+      sleep 5; done"
+    environment:
+      <<: *peers
+      BOOKING_DB_HOST: mysql
+      BOOKING_DB_NAME: ${BOOKING_DB_NAME:-booking_db}
+      BOOKING_DB_USER: ${BOOKING_DB_USER:-booking_app}
+      BOOKING_DB_PASS: ${BOOKING_DB_PASS:-change-me-booking}
+      ROOMOPS_DB_HOST: mysql
+      ROOMOPS_DB_NAME: ${ROOMOPS_DB_NAME:-roomops_db}
+      ROOMOPS_DB_USER: ${ROOMOPS_DB_USER:-roomops_app}
+      ROOMOPS_DB_PASS: ${ROOMOPS_DB_PASS:-change-me-roomops}
+      BILLING_DB_HOST: mysql
+      BILLING_DB_NAME: ${BILLING_DB_NAME:-billing_db}
+      BILLING_DB_USER: ${BILLING_DB_USER:-billing_app}
+      BILLING_DB_PASS: ${BILLING_DB_PASS:-change-me-billing}
+      PORTAL_DB_HOST: mysql
+      PORTAL_DB_NAME: ${PORTAL_DB_NAME:-portal_db}
+      PORTAL_DB_USER: ${PORTAL_DB_USER:-portal_app}
+      PORTAL_DB_PASS: ${PORTAL_DB_PASS:-change-me-portal}
+
+volumes:
+  mysql-data:

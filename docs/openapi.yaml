@@ -1,0 +1,151 @@
+openapi: 3.0.3
+info:
+  title: HarborLight Hotels - Reservation Hold API
+  version: 1.0.0
+  description: |
+    Public API of the web portal / API gateway. A hold reserves room-night stock for 10 minutes.
+    Stock is saved for every night from check-in up to, but excluding, check-out, or not at all.
+    A hold is confirmed only after verified payment (PayMongo webhook) or a manager-approved
+    pay-at-hotel guarantee. A browser success page never confirms a booking.
+    Money is integer centavos (PHP 2,500.00 = 250000). Dates are Asia/Manila calendar dates.
+servers:
+  - url: http://localhost:8080
+paths:
+  /v1/availability:
+    get:
+      operationId: searchAvailability
+      summary: Search availability and get a signed quote (no stock is reserved)
+      security: []
+      parameters:
+        - { name: checkIn, in: query, required: true, schema: { type: string, format: date } }
+        - { name: checkOut, in: query, required: true, schema: { type: string, format: date } }
+        - { name: quantity, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 5, default: 1 } }
+      responses:
+        '200':
+          description: One option per room type. quoteId is null when the type is sold out for the dates.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AvailabilityResult' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /v1/reservations:
+    post:
+      operationId: createReservationHold
+      summary: Create a 10-minute priced hold
+      description: |
+        Requires a valid session cookie, an X-CSRF-Token header and an Idempotency-Key header.
+        The same key with the same request returns the saved response for 24 hours.
+        The same key with a different request returns 409.
+        Guests book for themselves. Reception may set onBehalfOfGuestId.
+      security:
+        - sessionCookie: []
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, maxLength: 128 } }
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateReservationRequest' }
+      responses:
+        '201':
+          description: Hold created (status HELD). Replays of the same request return the same body.
+          headers:
+            Idempotent-Replayed:
+              description: Present with value true when this is a saved response being replayed.
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReservationHold' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Inventory conflict (a night has no capacity left) or Idempotency-Key reused with a different request.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                inventory: { value: { error: { code: INVENTORY_CONFLICT, message: No capacity left on 2026-12-03 } } }
+                key: { value: { error: { code: IDEMPOTENCY_KEY_REUSED, message: Idempotency-Key was already used with a different request } } }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: HLSESSID
+      description: Secure, HttpOnly, SameSite session cookie from POST /v1/login. Staff also pass a second factor at login.
+  responses:
+    Unauthenticated:
+      description: No valid session.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Role not allowed, or CSRF check failed.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    InvalidRequest:
+      description: Invalid request (bad dates, quantity, quote, or missing Idempotency-Key).
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    RateLimited:
+      description: Too many requests.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unavailable:
+      description: A service is temporarily unavailable.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: INVENTORY_CONFLICT }
+            message: { type: string }
+            details: { type: object }
+    AvailabilityResult:
+      type: object
+      properties:
+        checkIn: { type: string, format: date }
+        checkOut: { type: string, format: date }
+        nights: { type: integer }
+        quantity: { type: integer }
+        options:
+          type: array
+          items:
+            type: object
+            properties:
+              roomTypeId: { type: string, format: uuid }
+              name: { type: string, example: Standard }
+              available: { type: integer }
+              nightlyMinor: { type: integer, example: 250000 }
+              totalMinor: { type: integer, example: 500000 }
+              currency: { type: string, example: PHP }
+              quoteId: { type: string, nullable: true, description: Signed quote, valid 15 minutes. }
+    CreateReservationRequest:
+      type: object
+      required: [quoteId, roomTypeId, checkIn, checkOut, quantity]
+      properties:
+        quoteId: { type: string }
+        roomTypeId: { type: string, format: uuid }
+        checkIn: { type: string, format: date, example: '2026-12-01' }
+        checkOut: { type: string, format: date, example: '2026-12-03' }
+        quantity: { type: integer, minimum: 1, maximum: 5 }
+        onBehalfOfGuestId: { type: string, format: uuid, description: Reception only. }
+      description: roomTypeId, checkIn, checkOut and quantity must equal what the quote was issued for.
+    ReservationHold:
+      type: object
+      required: [reservationId, status, holdExpiresAt, amountMinor, currency]
+      properties:
+        reservationId: { type: string, format: uuid }
+        status: { type: string, enum: [HELD] }
+        holdExpiresAt: { type: string, format: date-time, description: UTC. }
+        amountMinor: { type: integer, example: 500000, description: Agreed price in centavos. }
+        currency: { type: string, enum: [PHP] }
+        roomTypeId: { type: string, format: uuid }
+        checkIn: { type: string, format: date }
+        checkOut: { type: string, format: date }
+        quantity: { type: integer }
