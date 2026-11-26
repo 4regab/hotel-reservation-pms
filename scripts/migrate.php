@@ -37,10 +37,21 @@ foreach ($services as $svc) {
     $done = $admin->query('SELECT filename FROM schema_migrations')->fetchAll(PDO::FETCH_COLUMN);
     $files = glob("{$root}/src/{$svc}/migrations/*.sql") ?: [];
     sort($files);
-    foreach ($files as $f) {
-        $base = basename($f);
+    // The shared procedures (audit, inbox, outbox, idempotency) come last, once the service has created its own tables.
+    $shared = glob("{$root}/src/shared/migrations/*.sql") ?: [];
+    sort($shared);
+    foreach (array_merge($files, $shared) as $f) {
+        $isShared = str_contains($f, '/src/shared/migrations/');
+        $base = ($isShared ? 'shared/' : '') . basename($f);
         if (in_array($base, $done, true)) {
             continue;
+        }
+        // A shared file names the tables it needs on its first line ("-- requires: a, b"); a service without them skips it.
+        if ($isShared && preg_match('/^-- requires:\s*(.+)$/m', (string) file_get_contents($f), $need)) {
+            $missing = array_filter(array_map('trim', explode(',', $need[1])), static fn (string $t): bool => $admin->query("SELECT OBJECT_ID({$text('dbo.' . $t)}, N'U')")->fetchColumn() === null);
+            if ($missing) {
+                continue;
+            }
         }
         echo "[{$svc}] applying {$base}\n";
         $admin->beginTransaction();
@@ -79,6 +90,11 @@ foreach ($services as $svc) {
         }
         $privs = $table === 'audit_log' ? 'SELECT, INSERT' : 'SELECT, INSERT, UPDATE, DELETE';
         $admin->exec("GRANT {$privs} ON dbo.{$ident($table)} TO {$ident($user)}");
+    }
+    // The service's code reaches the data through stored procedures and views: it may run every procedure and read every view.
+    $admin->exec("GRANT EXECUTE ON SCHEMA::dbo TO {$ident($user)}");
+    foreach ($admin->query('SELECT name FROM sys.views WHERE is_ms_shipped = 0')->fetchAll(PDO::FETCH_COLUMN) as $view) {
+        $admin->exec("GRANT SELECT ON dbo.{$ident($view)} TO {$ident($user)}");
     }
 }
 echo "migrations up to date\n";
