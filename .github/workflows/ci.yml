@@ -74,6 +74,13 @@ jobs:
           extensions: pdo_sqlsrv
       - name: Start the four services, run migrations and load demo data
         run: bash scripts/dev-stack.sh start
+      - name: Data dictionary and logical model, written from the real databases
+        run: bash -c 'source scripts/dev-env.sh && php scripts/gen-data-dictionary.php'
+      - name: Keep the generated database documents
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-docs
+          path: docs/database/*.md
       - name: Full journey (search, hold, pay, confirm, email, check-in, check-out, cleaning, ready)
         run: bash -c 'source scripts/dev-env.sh && php tests/e2e/journey.php'
       - name: Business rules (approvals, no-show, OTA import, privacy, password reset, roles)
