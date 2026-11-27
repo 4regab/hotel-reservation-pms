@@ -5,6 +5,7 @@ namespace Booking;
 
 use Lib\ApiException;
 use Lib\Audit;
+use Lib\Db;
 use Lib\Rbac;
 use Lib\Request;
 use Lib\ServiceAuth;
@@ -42,15 +43,15 @@ final class CatalogController
         $t ?? throw new ApiException(404, 'NOT_FOUND');
         $b = $r->json();
         $set = [];
-        $args = [];
+        $args = ['room_type_id' => $p['id']];
         $before = [];
         $after = [];
         if (array_key_exists('nightlyMinor', $b)) {
             if (!is_int($b['nightlyMinor']) || $b['nightlyMinor'] < 100000 || $b['nightlyMinor'] > 5000000) {
                 throw new ApiException(422, 'INVALID_REQUEST', 'nightlyMinor must be between PHP 1,000 and PHP 50,000 (in centavos)');
             }
-            $set[] = 'nightly_rate_minor = ?';
-            $args[] = $b['nightlyMinor'];
+            $set[] = 'nightly_rate_minor';
+            $args['nightly_rate_minor'] = $b['nightlyMinor'];
             $before['nightlyMinor'] = (int) $t['nightly_rate_minor'];
             $after['nightlyMinor'] = $b['nightlyMinor'];
         }
@@ -59,21 +60,20 @@ final class CatalogController
                 if (!is_string($b[$k]) || trim($b[$k]) === '' || mb_strlen($b[$k]) > $max) {
                     throw new ApiException(422, 'INVALID_REQUEST', "{$k} must be text of at most {$max} characters");
                 }
-                $set[] = "{$col} = ?";
-                $args[] = trim($b[$k]);
+                $set[] = $col;
+                $args[$col] = trim($b[$k]);
                 $after[$k] = true;
             }
         }
         if (array_key_exists('active', $b)) {
-            $set[] = 'active = ?';
-            $args[] = $b['active'] === true ? 1 : 0;
+            $set[] = 'active';
+            $args['active'] = $b['active'] === true ? 1 : 0;
             $after['active'] = $b['active'] === true;
         }
         if ($set === []) {
             throw new ApiException(422, 'INVALID_REQUEST', 'Nothing to change');
         }
-        $args[] = $p['id'];
-        $this->pdo->prepare('UPDATE room_type SET ' . implode(', ', $set) . ' WHERE room_type_id = ?')->execute($args);
+        Db::call($this->pdo, 'usp_catalog_updateRoomType', $args);
         Audit::record($this->pdo, $user, 'roomtype.update', 'room_type', $p['id'], ['before' => $before, 'after' => $after], $r->ip());
         return [200, self::typeView($this->repo->roomType($p['id']))];
     }

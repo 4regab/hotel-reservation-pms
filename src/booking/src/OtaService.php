@@ -6,6 +6,7 @@ namespace Booking;
 use Lib\ApiException;
 use Lib\Audit;
 use Lib\Csv;
+use Lib\Db;
 use Lib\Dates;
 use Lib\InsufficientStock;
 use Lib\Inventory;
@@ -33,28 +34,15 @@ final class OtaService
     public function partners(Request $r): array
     {
         Rbac::require(ServiceAuth::authenticate($r)['user']['role'], 'ota.read');
-        return [200, ['partners' => $this->pdo->query('SELECT partner_id AS partnerId, name FROM ota_partner WHERE active = 1 ORDER BY name')->fetchAll()]];
+        return [200, ['partners' => Db::call($this->pdo, 'usp_ota_listPartners')->fetchAll()]];
     }
 
     /** GET /internal/ota/allotments?status= with how much of each is still unused. */
     public function allotments(Request $r): array
     {
         Rbac::require(ServiceAuth::authenticate($r)['user']['role'], 'ota.read');
-        $where = '1=1';
-        $args = [];
-        if (!empty($r->query['status']) && in_array($r->query['status'], ['PENDING', 'APPROVED', 'REJECTED', 'RETURNED'], true)) {
-            $where = 'a.status = ?';
-            $args[] = $r->query['status'];
-        }
-        $st = $this->pdo->prepare(
-            "SELECT TOP (100) a.allotment_id AS allotmentId, a.partner_id AS partnerId, p.name AS partnerName, a.room_type_id AS roomTypeId, t.name AS roomTypeName, a.start_date AS startDate, a.end_date AS endDate,
-                    a.quantity, a.status, a.requested_by AS requestedBy, a.created_at AS createdAt,
-                    COALESCE((SELECT SUM(n.used) FROM ota_allotment_night n WHERE n.allotment_id = a.allotment_id), 0) AS usedNights,
-                    COALESCE((SELECT SUM(n.reserved) FROM ota_allotment_night n WHERE n.allotment_id = a.allotment_id), 0) AS reservedNights
-               FROM ota_allotment a JOIN ota_partner p ON p.partner_id = a.partner_id JOIN room_type t ON t.room_type_id = a.room_type_id
-              WHERE {$where} ORDER BY a.created_at DESC"
-        );
-        $st->execute($args);
+        $status = !empty($r->query['status']) && in_array($r->query['status'], ['PENDING', 'APPROVED', 'REJECTED', 'RETURNED'], true) ? $r->query['status'] : null;
+        $st = Db::call($this->pdo, 'usp_ota_listAllotments', ['status' => $status]);
         return [200, ['allotments' => $st->fetchAll()]];
     }
 
@@ -71,12 +59,11 @@ final class OtaService
         $qty = $b['quantity'] ?? null;
         if (!Dates::isDate($start) || !Dates::isDate($end) || $end <= $start || $start < Dates::manilaToday() || count(Dates::nights($start, $end)) > 90
             || !is_int($qty) || $qty < 1 || $qty > 45 || !Uuid::isValid($type) || $this->repo->roomType($type) === null
-            || !$this->exists('SELECT 1 FROM ota_partner WHERE partner_id = ? AND active = 1', [$partner])) {
+            || !$this->partnerActive($partner)) {
             throw new ApiException(422, 'INVALID_REQUEST', 'partnerId, roomTypeId, a future date range (max 90 nights) and a quantity of 1 to 45 are required');
         }
         $id = Uuid::v4();
-        $this->pdo->prepare("INSERT INTO ota_allotment (allotment_id, partner_id, room_type_id, start_date, end_date, quantity, status, requested_by, created_at) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, DATETRUNC(SECOND, SYSUTCDATETIME()))")
-            ->execute([$id, $partner, $type, $start, $end, $qty, $user['accountId']]);
+        Db::call($this->pdo, 'usp_ota_insertAllotment', ['allotment_id' => $id, 'partner_id' => $partner, 'room_type_id' => $type, 'start_date' => $start, 'end_date' => $end, 'quantity' => $qty, 'requested_by' => $user['accountId']]);
         Audit::record($this->pdo, $user, 'ota.allotment_requested', 'ota_allotment', $id, ['partner' => $partner, 'quantity' => $qty, 'start' => $start, 'end' => $end], $r->ip());
         if ($user['role'] === 'manager') {
             $this->decide($id, true, $user, $r->ip());
@@ -105,14 +92,14 @@ final class OtaService
         $user = ServiceAuth::authenticate($r)['user'];
         Rbac::require($user['role'], 'ota.approve');
         $id = $this->uuid($p['id']);
-        $a = $this->one('SELECT * FROM ota_allotment WHERE allotment_id = ?', [$id]) ?? throw new ApiException(404, 'NOT_FOUND');
+        $a = $this->allotment($id) ?? throw new ApiException(404, 'NOT_FOUND');
         if ($a['status'] !== 'APPROVED') {
             throw new ApiException(409, 'ILLEGAL_TRANSITION', 'Only an approved allotment can be returned');
         }
         $nights = $this->nightsOf($id);
         $this->inv->ensureNights($a['room_type_id'], array_keys($nights));
         $freed = Tx::run($this->pdo, function () use ($id, $a, $user, $r): int {
-            $this->pdo->prepare('SELECT allotment_id FROM ota_allotment WITH (UPDLOCK, ROWLOCK) WHERE allotment_id = ?')->execute([$id]);
+            Db::call($this->pdo, 'usp_ota_lockAllotment', ['allotment_id' => $id]);
             $nights = $this->nightsOf($id);
             $dates = array_keys($nights);
             $rows = $this->inv->lock($a['room_type_id'], $dates);
@@ -123,10 +110,10 @@ final class OtaService
                     $rows = Inventory::release($rows, [$d], $left, 'ota');
                     $freedTotal += $left;
                 }
-                $this->pdo->prepare('UPDATE ota_allotment_night SET reserved = used WHERE allotment_id = ? AND stay_date = ?')->execute([$id, $d]);
+                Db::call($this->pdo, 'usp_ota_releaseAllotmentNight', ['allotment_id' => $id, 'stay_date' => $d]);
             }
             $this->inv->save($a['room_type_id'], $rows, $dates);
-            $this->pdo->prepare("UPDATE ota_allotment SET status = 'RETURNED', decided_by = ?, decided_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE allotment_id = ?")->execute([$user['accountId'], $id]);
+            Db::call($this->pdo, 'usp_ota_returnAllotment', ['allotment_id' => $id, 'decided_by' => $user['accountId']]);
             Audit::record($this->pdo, $user, 'ota.allotment_returned', 'ota_allotment', $id, ['roomNightsFreed' => $freedTotal], $r->ip());
             return $freedTotal;
         });
@@ -136,7 +123,7 @@ final class OtaService
     public function imports(Request $r): array
     {
         Rbac::require(ServiceAuth::authenticate($r)['user']['role'], 'ota.read');
-        return [200, ['imports' => $this->pdo->query('SELECT TOP (30) i.import_id AS importId, i.partner_id AS partnerId, i.filename, i.rows_total AS rowsTotal, i.rows_ok AS rowsOk, i.rows_rejected AS rowsRejected, i.created_at AS createdAt FROM ota_import i ORDER BY i.created_at DESC')->fetchAll()]];
+        return [200, ['imports' => Db::call($this->pdo, 'usp_ota_listImports')->fetchAll()]];
     }
 
     /** POST /internal/ota/import {partnerId, filename, csv}: every row stands alone, so one bad row never blocks the rest. */
@@ -147,7 +134,7 @@ final class OtaService
         $b = $r->json();
         $partner = (string) ($b['partnerId'] ?? '');
         $csv = (string) ($b['csv'] ?? '');
-        if (!$this->exists('SELECT 1 FROM ota_partner WHERE partner_id = ? AND active = 1', [$partner])) {
+        if (!$this->partnerActive($partner)) {
             throw new ApiException(422, 'INVALID_REQUEST', 'Unknown partner');
         }
         if ($csv === '' || strlen($csv) > self::MAX_BYTES) {
@@ -180,8 +167,10 @@ final class OtaService
             }
         }
         $importId = Uuid::v4();
-        $this->pdo->prepare('INSERT INTO ota_import (import_id, partner_id, filename, rows_total, rows_ok, rows_rejected, report, imported_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))')
-            ->execute([$importId, $partner, mb_substr((string) ($b['filename'] ?? 'upload.csv'), 0, 120), count($rows), $ok, count($rows) - $ok, json_encode($report), $user['accountId']]);
+        Db::call($this->pdo, 'usp_ota_insertImport', [
+            'import_id' => $importId, 'partner_id' => $partner, 'filename' => mb_substr((string) ($b['filename'] ?? 'upload.csv'), 0, 120), 'rows_total' => count($rows),
+            'rows_ok' => $ok, 'rows_rejected' => count($rows) - $ok, 'report' => json_encode($report), 'imported_by' => $user['accountId'],
+        ]);
         Audit::record($this->pdo, $user, 'ota.import', 'ota_import', $importId, ['partner' => $partner, 'rows' => count($rows), 'imported' => $ok], $r->ip());
         return [200, ['importId' => $importId, 'rowsTotal' => count($rows), 'rowsOk' => $ok, 'rowsRejected' => count($rows) - $ok, 'report' => $report]];
     }
@@ -193,7 +182,7 @@ final class OtaService
         if ($ext === '' || strlen($ext) > 80 || !preg_match('/^[A-Za-z0-9._\-]+$/', $ext)) {
             throw new ApiException(422, 'ROW', 'external_booking_id is missing or has odd characters');
         }
-        if ($this->exists('SELECT 1 FROM ota_booking WHERE partner_id = ? AND external_booking_id = ?', [$partner, $ext])) {
+        if (Db::call($this->pdo, 'usp_ota_bookingExists', ['partner_id' => $partner, 'external_booking_id' => $ext])->fetch() !== false) {
             throw new ApiException(409, 'ROW', 'Already imported (duplicate booking id)');
         }
         $ci = $row['check_in'];
@@ -238,13 +227,9 @@ final class OtaService
 
         return Tx::run($this->pdo, function () use ($partner, $ext, $ci, $co, $nights, $name, $email, $row, $qty, $type, $amount): string {
             // Reservation-level uniqueness is also protected by the (partner_id, external_booking_id) primary key below.
-            $alloc = $this->pdo->prepare(
-                "SELECT TOP (1) a.allotment_id FROM ota_allotment a WITH (UPDLOCK, ROWLOCK)
-                  WHERE a.partner_id = ? AND a.room_type_id = ? AND a.status = 'APPROVED' AND a.start_date <= ? AND a.end_date >= ?
-                    AND (SELECT COUNT(*) FROM ota_allotment_night n WHERE n.allotment_id = a.allotment_id AND n.stay_date >= ? AND n.stay_date < ? AND n.reserved - n.used >= ?) = ?
-                  ORDER BY a.created_at"
-            );
-            $alloc->execute([$partner, $type["room_type_id"], $ci, $co, $ci, $co, $qty, count($nights)]);
+            $alloc = Db::call($this->pdo, 'usp_ota_lockAllotmentForImport', [
+                'partner_id' => $partner, 'room_type_id' => $type['room_type_id'], 'check_in' => $ci, 'check_out' => $co, 'quantity' => $qty, 'night_count' => count($nights),
+            ]);
             $allotmentId = $alloc->fetchColumn();
             if ($allotmentId === false) {
                 throw new ApiException(409, 'ROW', 'No reserved allotment left for these dates and room type');
@@ -255,26 +240,26 @@ final class OtaService
                 throw new ApiException(409, 'ROW', 'Allotment counters do not cover these dates');
             }
             $this->inv->save($type['room_type_id'], $rows, $nights);
-            $this->pdo->prepare('UPDATE ota_allotment_night SET used = used + ? WHERE allotment_id = ? AND stay_date >= ? AND stay_date < ?')->execute([$qty, $allotmentId, $ci, $co]);
+            Db::call($this->pdo, 'usp_ota_useAllotmentNights', ['allotment_id' => $allotmentId, 'quantity' => $qty, 'check_in' => $ci, 'check_out' => $co]);
 
             $guestId = null;
             if ($email !== '') {
-                $g = $this->pdo->prepare('SELECT TOP (1) guest_id FROM guest WHERE email = ? AND merged_into IS NULL AND anonymized_at IS NULL');
-                $g->execute([$email]);
+                $g = Db::call($this->pdo, 'usp_ota_findGuestByEmail', ['email' => $email]);
                 $guestId = $g->fetchColumn() ?: null;
             }
             if ($guestId === null) {
                 $guestId = Uuid::v4();
-                $this->pdo->prepare('INSERT INTO guest (guest_id, account_id, full_name, email, phone, created_at) VALUES (?, NULL, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))')
-                    ->execute([$guestId, $name, $email !== '' ? $email : strtolower($partner . '-' . $ext) . '@partner.invalid', $row['guest_phone'] ?? '']);
+                Db::call($this->pdo, 'usp_ota_insertGuest', [
+                    'guest_id' => $guestId, 'full_name' => $name, 'email' => $email !== '' ? $email : strtolower($partner . '-' . $ext) . '@partner.invalid', 'phone' => $row['guest_phone'] ?? '',
+                ]);
             }
             $id = Uuid::v4();
-            $this->pdo->prepare(
-                "INSERT INTO reservation (reservation_id, code, guest_id, room_type_id, check_in, check_out, quantity, status, guarantee, quote_minor, nightly_minor, currency, free_cancel_hours, hold_expires_at, source, adults, version, confirmed_at, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', 'OTA_PREPAID', ?, ?, 'PHP', 48, DATETRUNC(SECOND, SYSUTCDATETIME()), 'OTA', ?, 1, DATETRUNC(SECOND, SYSUTCDATETIME()), DATETRUNC(SECOND, SYSUTCDATETIME()), DATETRUNC(SECOND, SYSUTCDATETIME()))"
-            )->execute([$id, BookingRepository::newCode(), $guestId, $type['room_type_id'], $ci, $co, $qty, $amount, intdiv($amount, max(1, $qty * count($nights))), $qty]);
+            Db::call($this->pdo, 'usp_ota_insertReservation', [
+                'reservation_id' => $id, 'code' => BookingRepository::newCode(), 'guest_id' => $guestId, 'room_type_id' => $type['room_type_id'], 'check_in' => $ci, 'check_out' => $co,
+                'quantity' => $qty, 'quote_minor' => $amount, 'nightly_minor' => intdiv($amount, max(1, $qty * count($nights))), 'adults' => $qty,
+            ]);
             $this->repo->insertAllocations($id, $type['room_type_id'], $nights, $qty, 'CONFIRMED');
-            $this->pdo->prepare('INSERT INTO ota_booking (partner_id, external_booking_id, reservation_id, allotment_ref) VALUES (?, ?, ?, ?)')->execute([$partner, $ext, $id, $allotmentId]);
+            Db::call($this->pdo, 'usp_ota_insertBooking', ['partner_id' => $partner, 'external_booking_id' => $ext, 'reservation_id' => $id, 'allotment_ref' => $allotmentId]);
             Outbox::add($this->pdo, 'ReservationConfirmed', $id, 1, $id, [
                 'reservationId' => $id, 'roomTypeId' => $type['room_type_id'], 'checkIn' => $ci, 'checkOut' => $co, 'quantity' => $qty, 'amountMinor' => $amount, 'currency' => 'PHP',
             ]);
@@ -284,30 +269,28 @@ final class OtaService
 
     private function decide(string $id, bool $approve, array $user, ?string $ip): array
     {
-        $a = $this->one('SELECT * FROM ota_allotment WHERE allotment_id = ?', [$id]) ?? throw new ApiException(404, 'NOT_FOUND');
+        $a = $this->allotment($id) ?? throw new ApiException(404, 'NOT_FOUND');
         if ($a['status'] !== 'PENDING') {
             throw new ApiException(409, 'ILLEGAL_TRANSITION', 'This request was already decided');
         }
         if (!$approve) {
-            $this->pdo->prepare("UPDATE ota_allotment SET status = 'REJECTED', decided_by = ?, decided_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE allotment_id = ? AND status = 'PENDING'")->execute([$user['accountId'], $id]);
+            Db::call($this->pdo, 'usp_ota_rejectAllotment', ['allotment_id' => $id, 'decided_by' => $user['accountId']]);
             Audit::record($this->pdo, $user, 'ota.allotment_rejected', 'ota_allotment', $id, [], $ip);
             return [200, ['allotmentId' => $id, 'status' => 'REJECTED']];
         }
         $nights = Dates::nights($a['start_date'], $a['end_date']);
         $this->inv->ensureNights($a['room_type_id'], $nights);
         Tx::run($this->pdo, function () use ($a, $id, $nights, $user, $ip): void {
-            $lock = $this->pdo->prepare("SELECT status FROM ota_allotment WITH (UPDLOCK, ROWLOCK) WHERE allotment_id = ?");
-            $lock->execute([$id]);
+            $lock = Db::call($this->pdo, 'usp_ota_lockAllotment', ['allotment_id' => $id]);
             if ($lock->fetchColumn() !== 'PENDING') {
                 throw new ApiException(409, 'ILLEGAL_TRANSITION', 'This request was already decided');
             }
             $rows = Inventory::reserve($this->inv->lock($a['room_type_id'], $nights), $nights, (int) $a['quantity'], 'ota');
             $this->inv->save($a['room_type_id'], $rows, $nights);
-            $ins = $this->pdo->prepare('INSERT INTO ota_allotment_night (allotment_id, stay_date, reserved, used) VALUES (?, ?, ?, 0)');
             foreach ($nights as $n) {
-                $ins->execute([$id, $n, $a['quantity']]);
+                Db::call($this->pdo, 'usp_ota_insertAllotmentNight', ['allotment_id' => $id, 'stay_date' => $n, 'reserved' => $a['quantity']]);
             }
-            $this->pdo->prepare("UPDATE ota_allotment SET status = 'APPROVED', decided_by = ?, decided_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE allotment_id = ?")->execute([$user['accountId'], $id]);
+            Db::call($this->pdo, 'usp_ota_approveAllotment', ['allotment_id' => $id, 'decided_by' => $user['accountId']]);
             Audit::record($this->pdo, $user, 'ota.allotment_approved', 'ota_allotment', $id, ['quantity' => (int) $a['quantity']], $ip);
         });
         return [200, ['allotmentId' => $id, 'status' => 'APPROVED']];
@@ -316,8 +299,7 @@ final class OtaService
     /** @return array<string,array{reserved:int,used:int}> keyed by date */
     private function nightsOf(string $id): array
     {
-        $st = $this->pdo->prepare('SELECT stay_date, reserved, used FROM ota_allotment_night WHERE allotment_id = ? ORDER BY stay_date');
-        $st->execute([$id]);
+        $st = Db::call($this->pdo, 'usp_ota_listAllotmentNights', ['allotment_id' => $id]);
         $out = [];
         foreach ($st->fetchAll() as $n) {
             $out[$n['stay_date']] = ['reserved' => (int) $n['reserved'], 'used' => (int) $n['used']];
@@ -330,15 +312,13 @@ final class OtaService
         return Uuid::isValid($v) ? $v : throw new ApiException(404, 'NOT_FOUND');
     }
 
-    private function one(string $sql, array $args): ?array
+    private function allotment(string $id): ?array
     {
-        $st = $this->pdo->prepare($sql);
-        $st->execute($args);
-        return $st->fetch() ?: null;
+        return Db::call($this->pdo, 'usp_ota_getAllotment', ['allotment_id' => $id])->fetch() ?: null;
     }
 
-    private function exists(string $sql, array $args): bool
+    private function partnerActive(string $partner): bool
     {
-        return $this->one($sql, $args) !== null;
+        return Db::call($this->pdo, 'usp_ota_partnerExists', ['partner_id' => $partner])->fetch() !== false;
     }
 }

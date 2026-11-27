@@ -6,6 +6,7 @@ namespace Booking;
 use Lib\ApiException;
 use Lib\Audit;
 use Lib\Dates;
+use Lib\Db;
 use Lib\Rbac;
 use Lib\Request;
 use Lib\ServiceAuth;
@@ -30,15 +31,9 @@ final class InsightController
         if ($to < $from || count(Dates::nights($from, (new \DateTimeImmutable($to))->modify('+1 day')->format('Y-m-d'))) > 190) {
             throw new ApiException(422, 'INVALID_REQUEST', 'from/to must be dates, to not before from, at most 190 days');
         }
-        $totalRooms = (int) $this->pdo->query('SELECT COALESCE(SUM(capacity), 0) FROM room_type')->fetchColumn();
+        $totalRooms = (int) Db::call($this->pdo, 'usp_insight_totalRooms')->fetchColumn();
 
-        $sold = $this->pdo->prepare(
-            "SELECT a.stay_date, a.room_type_id, SUM(a.quantity) AS rooms, SUM(a.quantity * r.nightly_minor) AS revenue
-               FROM allocation a JOIN reservation r ON r.reservation_id = a.reservation_id
-              WHERE a.state = 'CONFIRMED' AND r.status IN ('CONFIRMED','CHECKED_IN','CHECKED_OUT') AND a.stay_date BETWEEN ? AND ?
-              GROUP BY a.stay_date, a.room_type_id"
-        );
-        $sold->execute([$from, $to]);
+        $sold = Db::call($this->pdo, 'usp_insight_soldByNight', ['from_date' => $from, 'to_date' => $to]);
         $perDay = [];
         $perType = [];
         foreach ($sold->fetchAll() as $s) {
@@ -47,8 +42,7 @@ final class InsightController
             $perType[$s['room_type_id']]['rooms'] = ($perType[$s['room_type_id']]['rooms'] ?? 0) + (int) $s['rooms'];
             $perType[$s['room_type_id']]['revenue'] = ($perType[$s['room_type_id']]['revenue'] ?? 0) + (int) $s['revenue'];
         }
-        $inv = $this->pdo->prepare('SELECT stay_date, SUM(blocked) AS blocked, SUM(held) AS held, SUM(ota_remaining) AS ota FROM inventory_night WHERE stay_date BETWEEN ? AND ? GROUP BY stay_date');
-        $inv->execute([$from, $to]);
+        $inv = Db::call($this->pdo, 'usp_insight_stockByNight', ['from_date' => $from, 'to_date' => $to]);
         $invRows = array_column($inv->fetchAll(), null, 'stay_date');
 
         $days = [];
@@ -68,7 +62,7 @@ final class InsightController
             $sumAvail += $avail;
         }
         $types = [];
-        foreach ($this->pdo->query('SELECT room_type_id, name FROM room_type ORDER BY nightly_rate_minor')->fetchAll() as $t) {
+        foreach (Db::call($this->pdo, 'usp_insight_listRoomTypes')->fetchAll() as $t) {
             $types[] = ['roomTypeId' => $t['room_type_id'], 'name' => $t['name'], 'roomNights' => $perType[$t['room_type_id']]['rooms'] ?? 0, 'revenueMinor' => $perType[$t['room_type_id']]['revenue'] ?? 0];
         }
         return [200, [
@@ -83,14 +77,12 @@ final class InsightController
     /** Spec section 4.5 measures that this service can calculate. */
     private function kpis(string $from, string $to): array
     {
-        $oversold = (int) $this->pdo->query('SELECT COUNT(*) FROM inventory_night WHERE blocked + held + confirmed + ota_remaining > capacity')->fetchColumn();
-        $confirmed = (int) $this->pdo->query("SELECT COUNT(*) FROM reservation WHERE status IN ('CONFIRMED','CHECKED_IN','CHECKED_OUT')")->fetchColumn();
-        $paid = $this->pdo->prepare("SELECT COUNT(*) AS n, SUM(CASE WHEN DATEDIFF_BIG(SECOND, paid_at, confirmed_at) <= 120 THEN 1 ELSE 0 END) AS fast FROM reservation
-                                      WHERE source = 'DIRECT' AND guarantee = 'PAID' AND paid_at IS NOT NULL AND confirmed_at IS NOT NULL AND created_at >= ? AND created_at < DATEADD(DAY, 1, CAST(? AS DATE))");
-        $paid->execute([$from, $to]);
-        $p = $paid->fetch();
-        $dup = GuestController::groups($this->pdo->query("SELECT g.guest_id, g.full_name, g.email, g.phone, CASE WHEN g.account_id IS NOT NULL THEN 1 ELSE 0 END AS has_account, g.created_at, 0 AS bookings FROM guest g WHERE g.merged_into IS NULL AND g.anonymized_at IS NULL")->fetchAll());
-        $activeGuests = (int) $this->pdo->query('SELECT COUNT(*) FROM guest WHERE merged_into IS NULL AND anonymized_at IS NULL')->fetchColumn();
+        $c = Db::call($this->pdo, 'usp_insight_kpiCounts', ['from_date' => $from, 'to_date' => $to])->fetch();
+        $oversold = (int) $c['oversold'];
+        $confirmed = (int) $c['confirmed'];
+        $p = ['n' => $c['paid_n'], 'fast' => $c['paid_fast']];
+        $dup = GuestController::groups(Db::call($this->pdo, 'usp_insight_listActiveGuests')->fetchAll());
+        $activeGuests = (int) $c['active_guests'];
         $dupGuests = 0;
         foreach ($dup as $g) {
             $dupGuests += count($g['guests']) - 1;
@@ -104,10 +96,7 @@ final class InsightController
 
     private function bookingCounts(string $from, string $to): array
     {
-        $st = $this->pdo->prepare(
-            "SELECT status, source, COUNT(*) AS n FROM reservation WHERE created_at >= ? AND created_at < DATEADD(DAY, 1, CAST(? AS DATE)) GROUP BY status, source"
-        );
-        $st->execute([$from, $to]);
+        $st = Db::call($this->pdo, 'usp_insight_bookingCounts', ['from_date' => $from, 'to_date' => $to]);
         $byStatus = [];
         $bySource = [];
         foreach ($st->fetchAll() as $row) {
