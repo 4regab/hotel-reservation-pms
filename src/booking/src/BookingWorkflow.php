@@ -6,6 +6,7 @@ namespace Booking;
 use Lib\ApiException;
 use Lib\Audit;
 use Lib\Dates;
+use Lib\Db;
 use Lib\InsufficientStock;
 use Lib\Inventory;
 use Lib\Log;
@@ -113,13 +114,13 @@ final class BookingWorkflow
                 $penalty = min($penalty, (int) $r['quote_minor']);
                 Outbox::add($this->pdo, 'ReservationCancelled', $reservationId, $version, $reservationId, ['reservationId' => $reservationId, 'penaltyMinor' => $penalty, 'currency' => $r['currency']]);
                 $refund = (int) $r['quote_minor'] - $penalty;
-                $this->pdo->prepare('UPDATE reservation SET cancelled_at = DATETRUNC(SECOND, SYSUTCDATETIME()), penalty_minor = ? WHERE reservation_id = ?')->execute([$penalty, $reservationId]);
+                Db::call($this->pdo, 'usp_reservation_markCancelled', ['reservation_id' => $reservationId, 'penalty_minor' => $penalty]);
                 if ($r['guarantee'] === 'PAID' && $refund > 0) {
                     Outbox::add($this->pdo, 'RefundRequested', $reservationId, $version, $reservationId, ['reservationId' => $reservationId, 'amountMinor' => $refund, 'currency' => $r['currency'], 'reason' => 'CANCELLATION']);
                 }
             }
             if ($r['status'] === S::HELD) {
-                $this->pdo->prepare('UPDATE reservation SET cancelled_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE reservation_id = ?')->execute([$reservationId]);
+                Db::call($this->pdo, 'usp_reservation_markCancelled', ['reservation_id' => $reservationId, 'penalty_minor' => null]);
             }
             return [200, ['reservationId' => $reservationId, 'status' => S::CANCELLED, 'penaltyMinor' => $penalty, 'currency' => $r['currency']]];
         });
@@ -179,13 +180,8 @@ final class BookingWorkflow
     {
         return Tx::run($this->pdo, function () use ($requestId, $roomTypeId, $start, $end): array {
             $nights = Dates::nights($start, $end);
-            $ins = $this->pdo->prepare(
-                'INSERT INTO maintenance_capacity (request_id, room_type_id, start_date, end_date, created_at)
-                 SELECT ?, ?, CAST(? AS DATE), CAST(? AS DATE), DATETRUNC(SECOND, SYSUTCDATETIME())
-                  WHERE NOT EXISTS (SELECT 1 FROM maintenance_capacity WITH (UPDLOCK, HOLDLOCK) WHERE request_id = ?)'
-            );
-            $ins->execute([$requestId, $roomTypeId, $start, $end, $requestId]);
-            if ($ins->rowCount() === 0) {
+            $saved = (int) Db::call($this->pdo, 'usp_maintenance_recordBlock', ['request_id' => $requestId, 'room_type_id' => $roomTypeId, 'start_date' => $start, 'end_date' => $end])->fetchColumn();
+            if ($saved === 0) {
                 return [200, ['requestId' => $requestId, 'status' => 'BLOCKED', 'replayed' => true]];
             }
             $rows = Inventory::reserve($this->inv->lock($roomTypeId, $nights), $nights, 1, 'blocked');
@@ -202,7 +198,7 @@ final class BookingWorkflow
             if ($r['status'] !== S::HELD || strtotime($r['hold_expires_at'] . ' UTC') <= $now) {
                 throw new ApiException(409, 'RESERVATION_NOT_PAYABLE', 'Only an unexpired hold can ask for a guarantee');
             }
-            $this->pdo->prepare('UPDATE reservation SET guarantee_requested = 1 WHERE reservation_id = ?')->execute([$reservationId]);
+            Db::call($this->pdo, 'usp_reservation_flagGuaranteeRequested', ['reservation_id' => $reservationId]);
             Audit::record($this->pdo, $user, 'reservation.guarantee_requested', 'reservation', $reservationId, ['code' => $r['code']]);
             return [200, ['reservationId' => $reservationId, 'guaranteeRequested' => true]];
         });
@@ -229,7 +225,7 @@ final class BookingWorkflow
             $this->repo->setAllocationState($reservationId, 'RELEASED');
             $version = $this->repo->setStatus($r, S::NO_SHOW);
             $penalty = $waive ? 0 : min((int) $r['quote_minor'], (int) $r['nightly_minor'] * (int) $r['quantity']);
-            $this->pdo->prepare('UPDATE reservation SET no_show_at = DATETRUNC(SECOND, SYSUTCDATETIME()), penalty_minor = ? WHERE reservation_id = ?')->execute([$penalty, $reservationId]);
+            Db::call($this->pdo, 'usp_reservation_markNoShow', ['reservation_id' => $reservationId, 'penalty_minor' => $penalty]);
             Outbox::add($this->pdo, 'ReservationNoShow', $reservationId, $version, $reservationId, ['reservationId' => $reservationId, 'penaltyMinor' => $penalty, 'currency' => $r['currency']]);
             $refund = (int) $r['quote_minor'] - $penalty;
             if ($r['guarantee'] === 'PAID' && $refund > 0) {

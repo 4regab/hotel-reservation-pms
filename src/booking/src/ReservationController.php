@@ -6,6 +6,7 @@ namespace Booking;
 use Lib\ApiException;
 use Lib\Audit;
 use Lib\Dates;
+use Lib\Db;
 use Lib\Idempotency;
 use Lib\Inbox;
 use Lib\Inventory;
@@ -103,7 +104,7 @@ final class ReservationController
                 [$st, $body] = $this->wf->hold($user['accountId'], $quote, $onBehalf, $b['guest'] ?? [], $now, ['adults' => $adults, 'specialRequests' => $requests]);
                 if ($st === 201) {
                     Audit::record($this->pdo, $user, 'reservation.hold', 'reservation', $body['reservationId'], ['roomTypeId' => $quote['roomTypeId'], 'checkIn' => $quote['checkIn'], 'checkOut' => $quote['checkOut']], $r->ip());
-                    $body['code'] = (string) $this->pdo->query("SELECT code FROM reservation WHERE reservation_id = " . $this->pdo->quote($body['reservationId']))->fetchColumn();
+                    $body['code'] = (string) Db::call($this->pdo, 'usp_reservation_getCode', ['reservation_id' => $body['reservationId']])->fetchColumn();
                 }
                 return [$st, $body];
             }, $now
@@ -128,50 +129,34 @@ final class ReservationController
         $user = ServiceAuth::authenticate($r)['user'];
         Rbac::require($user['role'], 'reservation.list');
         $q = $r->query;
-        $where = ['1=1'];
-        $args = [];
-        if ($user['role'] === 'guest') {
-            $where[] = 'g.account_id = ?';
-            $args[] = $user['accountId'];
-        }
+        $like = null;
         if (!empty($q['q'])) {
             $like = '%' . str_replace(['%', '_', '['], ['\\%', '\\_', '\\['], trim((string) $q['q'])) . '%';
-            $where[] = "(r.code LIKE ? ESCAPE '\\' OR g.full_name LIKE ? ESCAPE '\\' OR g.email LIKE ? ESCAPE '\\')";
-            array_push($args, $like, $like, $like);
         }
+        $statuses = null;
         if (!empty($q['status'])) {
             $list = array_filter(explode(',', (string) $q['status']), fn ($s) => in_array($s, ['HELD', 'CONFIRMED', 'EXPIRED', 'CANCELLED', 'CHECKED_IN', 'CHECKED_OUT', 'NO_SHOW'], true));
-            if ($list !== []) {
-                $where[] = 'r.status IN (' . implode(',', array_fill(0, count($list), '?')) . ')';
-                array_push($args, ...$list);
-            }
+            $statuses = $list === [] ? null : implode(',', $list);
         }
-        foreach (['checkIn' => 'r.check_in = ?', 'checkOut' => 'r.check_out = ?', 'from' => 'r.check_in >= ?', 'to' => 'r.check_in <= ?'] as $k => $sql) {
-            if (!empty($q[$k]) && Dates::isDate((string) $q[$k])) {
-                $where[] = $sql;
-                $args[] = $q[$k];
-            }
+        $dates = [];
+        foreach (['checkIn' => 'check_in', 'checkOut' => 'check_out', 'from' => 'arrive_from', 'to' => 'arrive_to'] as $k => $param) {
+            $dates[$param] = !empty($q[$k]) && Dates::isDate((string) $q[$k]) ? $q[$k] : null;
         }
+        $ids = null;   // an empty list ('') matches nothing
         if (!empty($q['ids'])) {
-            $ids = array_slice(array_values(array_filter(explode(',', (string) $q['ids']), fn ($i) => Uuid::isValid($i))), 0, 100);
-            $where[] = $ids === [] ? '1=0' : 'r.reservation_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')';
-            array_push($args, ...$ids);
+            $ids = implode(',', array_slice(array_values(array_filter(explode(',', (string) $q['ids']), fn ($i) => Uuid::isValid($i))), 0, 100));
         }
-        if (!empty($q['guaranteeRequested'])) {
-            $where[] = "r.guarantee_requested = 1 AND r.status = 'HELD' AND r.hold_expires_at > DATETRUNC(SECOND, SYSUTCDATETIME())";
-        }
-        if (!empty($q['source']) && in_array($q['source'], ['DIRECT', 'WALK_IN', 'OTA'], true)) {
-            $where[] = 'r.source = ?';
-            $args[] = $q['source'];
-        }
-        $limit = min(self::LIST_LIMIT, max(1, (int) ($q['limit'] ?? 100)));
-        $order = !empty($q['order']) && $q['order'] === 'arrival' ? 'r.check_in, r.created_at' : 'r.created_at DESC';
-        $st = $this->pdo->prepare(
-            'SELECT r.*, g.account_id AS guest_account_id, g.full_name, g.email, g.phone, t.name AS type_name, t.slug AS type_slug
-               FROM reservation r JOIN guest g ON g.guest_id = r.guest_id JOIN room_type t ON t.room_type_id = r.room_type_id
-              WHERE ' . implode(' AND ', $where) . " ORDER BY {$order} OFFSET 0 ROWS FETCH NEXT {$limit} ROWS ONLY"
-        );
-        $st->execute($args);
+        $st = Db::call($this->pdo, 'usp_reservation_search', [
+            'guest_account_id' => $user['role'] === 'guest' ? $user['accountId'] : null,
+            'like' => $like,
+            'statuses' => $statuses,
+            ...$dates,
+            'ids' => $ids,
+            'guarantee_requested' => !empty($q['guaranteeRequested']) ? 1 : null,
+            'source' => !empty($q['source']) && in_array($q['source'], ['DIRECT', 'WALK_IN', 'OTA'], true) ? $q['source'] : null,
+            'order_by_arrival' => !empty($q['order']) && $q['order'] === 'arrival' ? 1 : 0,
+            'row_limit' => min(self::LIST_LIMIT, max(1, (int) ($q['limit'] ?? 100))),
+        ]);
         return [200, ['reservations' => array_map(fn ($row) => $this->view($row, $user), $st->fetchAll())]];
     }
 
@@ -287,9 +272,7 @@ final class ReservationController
         if (Uuid::isValid($id)) {
             $row = $this->repo->find($id);
         } elseif ($user['role'] !== 'guest' && preg_match('/^HL[A-Z0-9]{6}$/', strtoupper($id))) {
-            $st = $this->pdo->prepare('SELECT reservation_id FROM reservation WHERE code = ?');
-            $st->execute([strtoupper($id)]);
-            $found = $st->fetchColumn();
+            $found = Db::call($this->pdo, 'usp_reservation_findIdByCode', ['code' => strtoupper($id)])->fetchColumn();
             $row = $found ? $this->repo->find((string) $found) : null;
         }
         if ($row === null || ($user['role'] === 'guest' && $row['guest_account_id'] !== $user['accountId'])) {
@@ -306,9 +289,7 @@ final class ReservationController
             $row['type_slug'] = $t['slug'] ?? '';
         }
         if (!isset($row['full_name'])) {
-            $st = $this->pdo->prepare('SELECT full_name, email, phone FROM guest WHERE guest_id = ?');
-            $st->execute([$row['guest_id']]);
-            $row += $st->fetch() ?: ['full_name' => '', 'email' => '', 'phone' => ''];
+            $row += Db::call($this->pdo, 'usp_guest_getContact', ['guest_id' => $row['guest_id']])->fetch() ?: ['full_name' => '', 'email' => '', 'phone' => ''];
         }
         $role = $user['role'];
         $v = [
