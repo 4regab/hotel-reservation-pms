@@ -5,6 +5,7 @@ namespace RoomOps;
 
 use Lib\ApiException;
 use Lib\Audit;
+use Lib\Db;
 use Lib\Dates;
 use Lib\Outbox;
 use Lib\Peer;
@@ -72,21 +73,20 @@ final class StayCoordinator
             }
             $stayId = Uuid::v4();
             try {
-                $this->pdo->prepare('INSERT INTO stay (stay_id, reservation_id, check_in, check_out, actual_check_in, identity_verified_by, identity_doc_type, queue_started_at, override_by, override_reason) VALUES (?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()), ?, ?, ?, ?, ?)')
-                    ->execute([$stayId, $rid, $res['checkIn'], $res['checkOut'], $user['accountId'], $doc, $queueStart, $override === null ? null : $override['by'], $override['reason'] ?? null]);
+                Db::call($this->pdo, 'usp_roomops_insertStay', [
+                    'stay_id' => $stayId, 'reservation_id' => $rid, 'check_in' => $res['checkIn'], 'check_out' => $res['checkOut'], 'identity_verified_by' => $user['accountId'],
+                    'identity_doc_type' => $doc, 'queue_started_at' => $queueStart, 'override_by' => $override === null ? null : $override['by'], 'override_reason' => $override['reason'] ?? null,
+                ]);
             } catch (\PDOException $e) {
-                if (\Lib\Db::isDuplicateKey($e)) {
+                if (Db::isDuplicateKey($e)) {
                     throw new ApiException(409, 'ALREADY_CHECKED_IN', 'This reservation already has a stay');
                 }
                 throw $e;
             }
-            $assign = $this->pdo->prepare('INSERT INTO room_assignment (assignment_id, stay_id, room_id, start_date, end_date, active) VALUES (?, ?, ?, ?, ?, 1)');
-            $occupy = $this->pdo->prepare("UPDATE room SET readiness = 'OCCUPIED', version = version + 1 WHERE room_id = ?");
             foreach ($rooms as $room) {
-                $assign->execute([Uuid::v4(), $stayId, $room['room_id'], $res['checkIn'], $res['checkOut']]);
-                $occupy->execute([$room['room_id']]);
+                Db::call($this->pdo, 'usp_roomops_assignRoom', ['assignment_id' => Uuid::v4(), 'stay_id' => $stayId, 'room_id' => $room['room_id'], 'start_date' => $res['checkIn'], 'end_date' => $res['checkOut']]);
             }
-            $this->pdo->prepare("UPDATE arrival SET status = 'ARRIVED' WHERE reservation_id = ?")->execute([$rid]);
+            Db::call($this->pdo, 'usp_roomops_setArrivalStatus', ['reservation_id' => $rid, 'status' => 'ARRIVED']);
             Audit::record($this->pdo, $user, $override === null ? 'stay.check_in' : 'stay.early_check_in', 'reservation', $rid, ['stayId' => $stayId, 'doc' => $doc, 'override' => $override['reason'] ?? null], $ip);
             Outbox::add($this->pdo, 'StayCheckedIn', $stayId, 1, $rid, ['reservationId' => $rid, 'stayId' => $stayId, 'roomIds' => array_column($rooms, 'room_id')]);
             return [201, ['stayId' => $stayId, 'reservationId' => $rid, 'rooms' => array_map(fn ($r) => ['roomId' => $r['room_id'], 'roomNumber' => $r['room_number']], $rooms)]];
@@ -96,7 +96,7 @@ final class StayCoordinator
     public function checkOut(array $user, array $b, ?string $ip = null): array
     {
         $rid = $this->uuid($b['reservationId'] ?? null, 'reservationId');
-        $stay = $this->one('SELECT stay_id, actual_check_out FROM stay WHERE reservation_id = ?', [$rid]) ?? throw new ApiException(404, 'NOT_FOUND', 'No stay for this reservation');
+        $stay = Db::call($this->pdo, 'usp_roomops_getStay', ['reservation_id' => $rid])->fetch() ?: throw new ApiException(404, 'NOT_FOUND', 'No stay for this reservation');
         if ($stay['actual_check_out'] !== null) {
             throw new ApiException(409, 'ALREADY_CHECKED_OUT');
         }
@@ -112,20 +112,14 @@ final class StayCoordinator
         }
 
         return Tx::run($this->pdo, function () use ($rid, $user, $ip): array {
-            $s = $this->one('SELECT stay_id, actual_check_out FROM stay WITH (UPDLOCK, ROWLOCK) WHERE reservation_id = ?', [$rid]);
+            $s = Db::call($this->pdo, 'usp_roomops_lockStay', ['reservation_id' => $rid])->fetch() ?: null;
             if ($s === null || $s['actual_check_out'] !== null) {
                 throw new ApiException(409, 'ALREADY_CHECKED_OUT');
             }
-            $st = $this->pdo->prepare('SELECT room_id FROM room_assignment WHERE stay_id = ? AND active = 1 ORDER BY room_id');
-            $st->execute([$s['stay_id']]);
-            $roomIds = $st->fetchAll(\PDO::FETCH_COLUMN);
-            $this->pdo->prepare('UPDATE stay SET actual_check_out = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE stay_id = ?')->execute([$s['stay_id']]);
-            $this->pdo->prepare('UPDATE room_assignment SET active = 0 WHERE stay_id = ?')->execute([$s['stay_id']]);
-            $dirty = $this->pdo->prepare("UPDATE room SET readiness = 'DIRTY', version = version + 1 WHERE room_id = ?");
-            $task = $this->pdo->prepare("INSERT INTO cleaning_task (task_id, room_id, assignee, status, created_at) VALUES (?, ?, NULL, 'OPEN', DATETRUNC(SECOND, SYSUTCDATETIME()))");
+            $roomIds = Db::call($this->pdo, 'usp_roomops_listStayRooms', ['stay_id' => $s['stay_id']])->fetchAll(\PDO::FETCH_COLUMN);
+            Db::call($this->pdo, 'usp_roomops_endStay', ['stay_id' => $s['stay_id']]);
             foreach ($roomIds as $roomId) {
-                $dirty->execute([$roomId]);
-                $task->execute([Uuid::v4(), $roomId]);
+                Db::call($this->pdo, 'usp_roomops_releaseRoom', ['room_id' => $roomId, 'task_id' => Uuid::v4()]);
             }
             Audit::record($this->pdo, $user, 'stay.check_out', 'reservation', $rid, ['stayId' => $s['stay_id']], $ip);
             Outbox::add($this->pdo, 'StayCheckedOut', $s['stay_id'], 2, $rid, ['reservationId' => $rid, 'stayId' => $s['stay_id'], 'roomIds' => $roomIds]);
@@ -147,7 +141,7 @@ final class StayCoordinator
         if ($today >= $res['checkIn']) {
             return null;
         }
-        $o = $this->one("SELECT reason, decided_by FROM arrival_override WHERE reservation_id = ? AND status = 'APPROVED'", [$rid]);
+        $o = Db::call($this->pdo, 'usp_roomops_getApprovedOverride', ['reservation_id' => $rid])->fetch() ?: null;
         if ($o !== null) {
             return ['by' => (string) $o['decided_by'], 'reason' => (string) $o['reason']];
         }
@@ -170,14 +164,7 @@ final class StayCoordinator
     /** @return list<string> */
     private function pickReadyRooms(string $roomTypeId, int $qty, string $checkIn, string $checkOut): array
     {
-        $st = $this->pdo->prepare(
-            "SELECT TOP ({$qty}) r.room_id FROM room r WITH (UPDLOCK, ROWLOCK)
-              WHERE r.room_type_id = ? AND r.readiness = 'READY'
-                AND NOT EXISTS (SELECT 1 FROM room_assignment a WHERE a.room_id = r.room_id AND a.active = 1 AND a.start_date < ? AND a.end_date > ?)
-              ORDER BY r.room_number"
-        );
-        $st->execute([$roomTypeId, $checkOut, $checkIn]);
-        $ids = $st->fetchAll(\PDO::FETCH_COLUMN);
+        $ids = Db::call($this->pdo, 'usp_roomops_pickReadyRooms', ['room_type_id' => $roomTypeId, 'quantity' => $qty, 'check_in' => $checkIn, 'check_out' => $checkOut])->fetchAll(\PDO::FETCH_COLUMN);
         if (count($ids) < $qty) {
             throw new ApiException(409, 'NO_READY_ROOM', 'Not enough ready rooms of the booked type; try again after cleaning');
         }
@@ -186,19 +173,12 @@ final class StayCoordinator
 
     private function lockRoom(string $roomId): array
     {
-        return $this->one('SELECT room_id, room_type_id, room_number, readiness FROM room WITH (UPDLOCK, ROWLOCK) WHERE room_id = ?', [$roomId]) ?? throw new ApiException(404, 'ROOM_NOT_FOUND');
+        return Db::call($this->pdo, 'usp_roomops_lockRoom', ['room_id' => $roomId])->fetch() ?: throw new ApiException(404, 'ROOM_NOT_FOUND');
     }
 
     private function hasOverlap(string $roomId, string $start, string $end): bool
     {
-        return $this->one('SELECT TOP (1) 1 AS x FROM room_assignment WHERE room_id = ? AND active = 1 AND start_date < ? AND end_date > ?', [$roomId, $end, $start]) !== null;
-    }
-
-    private function one(string $sql, array $args): ?array
-    {
-        $st = $this->pdo->prepare($sql);
-        $st->execute($args);
-        return $st->fetch() ?: null;
+        return Db::call($this->pdo, 'usp_roomops_hasAssignmentOverlap', ['room_id' => $roomId, 'start_date' => $start, 'end_date' => $end])->fetch() !== false;
     }
 
     private function uuid(mixed $v, string $field): string
