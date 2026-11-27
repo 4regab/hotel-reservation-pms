@@ -7,6 +7,7 @@ use Lib\ApiException;
 use Lib\Audit;
 use Lib\Csv;
 use Lib\Dates;
+use Lib\Db;
 use Lib\Outbox;
 use Lib\Tx;
 use Lib\Uuid;
@@ -14,8 +15,6 @@ use Lib\Uuid;
 /** Payment lists, reconciliation, refund decisions, approved accounting exports and revenue figures. */
 final class FinanceService
 {
-    private const MANILA = "CAST(DATEADD(HOUR, 8, %s) AS DATE)";
-
     public function __construct(private \PDO $pdo)
     {
     }
@@ -35,32 +34,17 @@ final class FinanceService
     public function payments(array $q): array
     {
         [$from, $to] = self::range($q);
-        $day = sprintf(self::MANILA, 'p.created_at');
-        $where = "{$day} BETWEEN ? AND ?";
-        $args = [$from, $to];
-        if (($q['reconciled'] ?? '') === '0') {
-            $where .= " AND p.reconciled_at IS NULL AND p.status = 'CAPTURED'";
-        } elseif (($q['reconciled'] ?? '') === '1') {
-            $where .= ' AND p.reconciled_at IS NOT NULL';
-        }
-        if (($q['status'] ?? '') === 'REVIEW') {
-            $where .= " AND p.status = 'REVIEW'";
-        }
-        $st = $this->pdo->prepare(
-            "SELECT TOP (300) p.payment_id AS paymentId, p.reservation_id AS reservationId, p.provider, p.method, p.provider_payment_id AS providerPaymentId, p.amount_minor AS amountMinor, p.currency, p.status,
-                    p.created_at AS createdAt, p.reconciled_at AS reconciledAt, {$day} AS day,
-                    (SELECT r.status FROM refund r WHERE r.payment_id = p.payment_id) AS refundStatus
-               FROM payment p WHERE {$where} ORDER BY p.created_at DESC"
-        );
-        $st->execute($args);
+        $reconciled = in_array($q['reconciled'] ?? '', ['0', '1'], true) ? $q['reconciled'] : null;
+        $st = Db::call($this->pdo, 'usp_payment_list', [
+            'from_date' => $from, 'to_date' => $to, 'reconciled' => $reconciled, 'status' => ($q['status'] ?? '') === 'REVIEW' ? 'REVIEW' : null,
+        ]);
         return [200, ['from' => $from, 'to' => $to, 'payments' => array_map(fn ($r) => ['amountMinor' => (int) $r['amountMinor']] + $r, $st->fetchAll())]];
     }
 
     public function reconcile(string $paymentId, array $user, ?string $ip): array
     {
-        $st = $this->pdo->prepare("UPDATE payment SET reconciled_at = DATETRUNC(SECOND, SYSUTCDATETIME()), reconciled_by = ? WHERE payment_id = ? AND status = 'CAPTURED' AND reconciled_at IS NULL");
-        $st->execute([$user['accountId'], $paymentId]);
-        if ($st->rowCount() === 0) {
+        $affected = (int) Db::call($this->pdo, 'usp_payment_reconcile', ['payment_id' => $paymentId, 'reconciled_by' => $user['accountId']])->fetchColumn();
+        if ($affected === 0) {
             throw new ApiException(409, 'NOT_RECONCILABLE', 'Payment not found, not captured, or already reconciled');
         }
         Audit::record($this->pdo, $user, 'payment.reconciled', 'payment', $paymentId, [], $ip);
@@ -73,20 +57,14 @@ final class FinanceService
         if (!Dates::isDate($date)) {
             throw new ApiException(422, 'INVALID_REQUEST', 'date must be YYYY-MM-DD');
         }
-        $st = $this->pdo->prepare("UPDATE payment SET reconciled_at = DATETRUNC(SECOND, SYSUTCDATETIME()), reconciled_by = ? WHERE status = 'CAPTURED' AND reconciled_at IS NULL AND " . sprintf(self::MANILA, 'created_at') . ' <= ?');
-        $st->execute([$user['accountId'], $date]);
-        Audit::record($this->pdo, $user, 'payment.reconciled_batch', 'payment', $date, ['count' => $st->rowCount()], $ip);
-        return [200, ['reconciled' => $st->rowCount()]];
+        $count = (int) Db::call($this->pdo, 'usp_payment_reconcileUpTo', ['up_to_date' => $date, 'reconciled_by' => $user['accountId']])->fetchColumn();
+        Audit::record($this->pdo, $user, 'payment.reconciled_batch', 'payment', $date, ['count' => $count], $ip);
+        return [200, ['reconciled' => $count]];
     }
 
     public function refunds(string $status): array
     {
-        $where = in_array($status, ['REQUESTED', 'COMPLETED', 'REJECTED'], true) ? 'WHERE r.status = ' . $this->pdo->quote($status) : '';
-        $rows = $this->pdo->query(
-            "SELECT TOP (200) r.refund_id AS refundId, r.payment_id AS paymentId, p.reservation_id AS reservationId, r.amount_minor AS amountMinor, p.currency, r.approval, r.status, r.requested_by AS requestedBy,
-                    r.reason, r.created_at AS createdAt, r.completed_at AS completedAt, r.decision_note AS decisionNote, p.amount_minor AS paymentMinor
-               FROM refund r JOIN payment p ON p.payment_id = r.payment_id {$where} ORDER BY r.created_at DESC"
-        )->fetchAll();
+        $rows = Db::call($this->pdo, 'usp_refund_list', ['status' => in_array($status, ['REQUESTED', 'COMPLETED', 'REJECTED'], true) ? $status : null])->fetchAll();
         return [200, ['refunds' => array_map(fn ($r) => ['amountMinor' => (int) $r['amountMinor'], 'paymentMinor' => (int) $r['paymentMinor']] + $r, $rows)]];
     }
 
@@ -98,14 +76,12 @@ final class FinanceService
             throw new ApiException(422, 'INVALID_REQUEST', 'A note explaining the decision is required');
         }
         return Tx::run($this->pdo, function () use ($refundId, $note, $user, $ip): array {
-            $st = $this->pdo->prepare('SELECT requested_by, status FROM refund WITH (UPDLOCK, ROWLOCK) WHERE refund_id = ?');
-            $st->execute([$refundId]);
-            $r = $st->fetch() ?: throw new ApiException(404, 'NOT_FOUND');
+            $r = Db::call($this->pdo, 'usp_refund_getForUpdate', ['refund_id' => $refundId])->fetch() ?: throw new ApiException(404, 'NOT_FOUND');
             RefundPolicy::assertCanApprove($user['role'], $user['accountId'], $r['requested_by']);
             if ($r['status'] !== 'REQUESTED') {
                 throw new ApiException(409, 'REFUND_NOT_PENDING', 'This refund was already decided');
             }
-            $this->pdo->prepare("UPDATE refund SET approval = 'REJECTED', status = 'REJECTED', approved_by = ?, decision_note = ? WHERE refund_id = ?")->execute([$user['accountId'], $note, $refundId]);
+            Db::call($this->pdo, 'usp_refund_reject', ['refund_id' => $refundId, 'approved_by' => $user['accountId'], 'note' => $note]);
             Audit::record($this->pdo, $user, 'refund.rejected', 'refund', $refundId, ['note' => $note], $ip);
             return [200, ['refundId' => $refundId, 'status' => 'REJECTED']];
         });
@@ -119,15 +95,15 @@ final class FinanceService
         }
         $rid = $reservation['reservationId'];
         return Tx::run($this->pdo, function () use ($reservation, $rid, $method, $user, $ip): array {
-            $st = $this->pdo->prepare("SELECT 1 FROM payment WITH (UPDLOCK, HOLDLOCK) WHERE reservation_id = ? AND status = 'CAPTURED'");
-            $st->execute([$rid]);
-            if ($st->fetchColumn() !== false) {
+            if (Db::call($this->pdo, 'usp_payment_hasCapturedForUpdate', ['reservation_id' => $rid])->fetchColumn() !== false) {
                 throw new ApiException(409, 'ALREADY_PAID', 'This reservation already has a captured payment');
             }
             $pid = Uuid::v4();
             $amount = (int) $reservation['amountMinor'];
-            $this->pdo->prepare("INSERT INTO payment (payment_id, reservation_id, folio_id, provider, method, provider_payment_id, provider_event_id, amount_minor, currency, status, created_at) VALUES (?, ?, NULL, 'ONSITE', ?, ?, NULL, ?, ?, 'CAPTURED', DATETRUNC(SECOND, SYSUTCDATETIME()))")
-                ->execute([$pid, $rid, $method, 'onsite-' . $pid, $amount, $reservation['currency']]);
+            Db::call($this->pdo, 'usp_payment_insertOnsite', [
+                'payment_id' => $pid, 'reservation_id' => $rid, 'folio_id' => null, 'method' => $method,
+                'provider_payment_id' => 'onsite-' . $pid, 'amount_minor' => $amount, 'currency' => $reservation['currency'],
+            ]);
             Outbox::add($this->pdo, 'PaymentCaptured', $pid, 1, $rid, ['paymentId' => $pid, 'reservationId' => $rid, 'amountMinor' => $amount, 'currency' => $reservation['currency'], 'method' => 'ONSITE']);
             Audit::record($this->pdo, $user, 'payment.onsite', 'reservation', $rid, ['paymentId' => $pid, 'amountMinor' => $amount, 'method' => $method], $ip);
             return [201, ['paymentId' => $pid, 'reservationId' => $rid, 'amountMinor' => $amount]];
@@ -137,14 +113,14 @@ final class FinanceService
     /** Everything a guest receipt needs. Ownership is checked by the caller against Booking first. */
     public function receipt(string $reservationId): array
     {
-        $pay = $this->pdo->prepare("SELECT payment_id AS paymentId, provider, method, provider_payment_id AS reference, amount_minor AS amountMinor, currency, status, created_at AS createdAt FROM payment WHERE reservation_id = ? AND status = 'CAPTURED' ORDER BY created_at");
-        $pay->execute([$reservationId]);
-        $ref = $this->pdo->prepare("SELECT r.refund_id AS refundId, r.amount_minor AS amountMinor, r.status, r.reason, r.completed_at AS completedAt FROM refund r JOIN payment p ON p.payment_id = r.payment_id WHERE p.reservation_id = ? ORDER BY r.created_at");
-        $ref->execute([$reservationId]);
-        $ch = $this->pdo->prepare('SELECT c.description, c.amount_minor AS amountMinor, c.created_at AS createdAt FROM charge c JOIN folio f ON f.folio_id = c.folio_id WHERE f.reservation_id = ? ORDER BY c.created_at');
-        $ch->execute([$reservationId]);
+        $st = Db::call($this->pdo, 'usp_receipt_get', ['reservation_id' => $reservationId]);
+        $pay = $st->fetchAll();
+        $st->nextRowset();
+        $ref = $st->fetchAll();
+        $st->nextRowset();
+        $ch = $st->fetchAll();
         $cast = fn (array $rows) => array_map(fn ($r) => ['amountMinor' => (int) $r['amountMinor']] + $r, $rows);
-        return ['reservationId' => $reservationId, 'payments' => $cast($pay->fetchAll()), 'refunds' => $cast($ref->fetchAll()), 'charges' => $cast($ch->fetchAll())];
+        return ['reservationId' => $reservationId, 'payments' => $cast($pay), 'refunds' => $cast($ref), 'charges' => $cast($ch)];
     }
 
     // ---- accounting exports -------------------------------------------------------------------------------
@@ -156,19 +132,17 @@ final class FinanceService
      */
     public function exportLines(string $from, string $to): array
     {
-        $day = sprintf(self::MANILA, 'created_at');
-        $p = $this->pdo->prepare("SELECT payment_id, {$day} AS day, provider, method, provider_payment_id, amount_minor, currency, reservation_id FROM payment WHERE status = 'CAPTURED' AND {$day} BETWEEN ? AND ? ORDER BY created_at, payment_id");
-        $p->execute([$from, $to]);
-        $rf = $this->pdo->prepare("SELECT r.refund_id, " . sprintf(self::MANILA, 'r.completed_at') . " AS day, p.provider, p.method, p.provider_payment_id, r.amount_minor, p.currency, p.reservation_id
-                                     FROM refund r JOIN payment p ON p.payment_id = r.payment_id WHERE r.status = 'COMPLETED' AND " . sprintf(self::MANILA, 'r.completed_at') . ' BETWEEN ? AND ? ORDER BY r.completed_at, r.refund_id');
-        $rf->execute([$from, $to]);
+        $st = Db::call($this->pdo, 'usp_export_getLines', ['from_date' => $from, 'to_date' => $to]);
+        $payments = $st->fetchAll();
+        $st->nextRowset();
+        $refunds = $st->fetchAll();
         $rows = [];
         $total = 0;
-        foreach ($p->fetchAll() as $x) {
+        foreach ($payments as $x) {
             $rows[] = [$x['payment_id'], $x['day'], 'PAYMENT', $x['reservation_id'], $x['provider'] . ($x['method'] ? '/' . $x['method'] : ''), $x['provider_payment_id'], number_format((int) $x['amount_minor'] / 100, 2, '.', ''), $x['currency']];
             $total += (int) $x['amount_minor'];
         }
-        foreach ($rf->fetchAll() as $x) {
+        foreach ($refunds as $x) {
             $rows[] = [$x['refund_id'], $x['day'], 'REFUND', $x['reservation_id'], $x['provider'] . ($x['method'] ? '/' . $x['method'] : ''), $x['provider_payment_id'], '-' . number_format((int) $x['amount_minor'] / 100, 2, '.', ''), $x['currency']];
             $total -= (int) $x['amount_minor'];
         }
@@ -186,31 +160,31 @@ final class FinanceService
         $header = ['line_id', 'date', 'type', 'reservation_ref', 'method', 'provider_reference', 'amount_php', 'currency'];
         $csv = Csv::write([$header, ...array_map(fn ($r) => $r, $lines['rows'])]);
         $id = Uuid::v4();
-        $this->pdo->prepare("INSERT INTO accounting_export (export_id, batch_ref, period_from, period_to, status, row_count, total_minor, csv, checksum, requested_by, created_at) VALUES (?, ?, ?, ?, 'REQUESTED', ?, ?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))")
-            ->execute([$id, $batch, $from, $to, $lines['count'], $lines['total'], $csv, hash('sha256', $csv), $user['accountId']]);
+        Db::call($this->pdo, 'usp_export_insert', [
+            'export_id' => $id, 'batch_ref' => $batch, 'period_from' => $from, 'period_to' => $to, 'row_count' => $lines['count'],
+            'total_minor' => $lines['total'], 'csv' => $csv, 'checksum' => hash('sha256', $csv), 'requested_by' => $user['accountId'],
+        ]);
         Audit::record($this->pdo, $user, 'export.requested', 'export', $id, ['batch' => $batch, 'rows' => $lines['count'], 'totalMinor' => $lines['total']], $ip);
         return [201, ['exportId' => $id, 'batchRef' => $batch, 'rowCount' => $lines['count'], 'totalMinor' => $lines['total'], 'status' => 'REQUESTED']];
     }
 
     public function exports(): array
     {
-        $rows = $this->pdo->query('SELECT TOP (50) export_id AS exportId, batch_ref AS batchRef, period_from AS periodFrom, period_to AS periodTo, status, row_count AS [rowCount], total_minor AS totalMinor, requested_by AS requestedBy, approved_by AS approvedBy, downloads, created_at AS createdAt, checksum FROM accounting_export ORDER BY created_at DESC')->fetchAll();
+        $rows = Db::call($this->pdo, 'usp_export_list')->fetchAll();
         return [200, ['exports' => array_map(fn ($r) => ['rowCount' => (int) $r['rowCount'], 'totalMinor' => (int) $r['totalMinor'], 'downloads' => (int) $r['downloads']] + $r, $rows)]];
     }
 
     public function decideExport(string $id, bool $approve, array $user, ?string $ip): array
     {
         return Tx::run($this->pdo, function () use ($id, $approve, $user, $ip): array {
-            $st = $this->pdo->prepare('SELECT requested_by, status, batch_ref FROM accounting_export WITH (UPDLOCK, ROWLOCK) WHERE export_id = ?');
-            $st->execute([$id]);
-            $e = $st->fetch() ?: throw new ApiException(404, 'NOT_FOUND');
+            $e = Db::call($this->pdo, 'usp_export_getForUpdate', ['export_id' => $id])->fetch() ?: throw new ApiException(404, 'NOT_FOUND');
             if ($e['status'] !== 'REQUESTED') {
                 throw new ApiException(409, 'ILLEGAL_TRANSITION', 'This export was already decided');
             }
             if ($e['requested_by'] === $user['accountId']) {
                 throw new ApiException(403, 'SELF_APPROVAL', 'An export must be approved by someone other than the person who requested it');
             }
-            $this->pdo->prepare('UPDATE accounting_export SET status = ?, approved_by = ?, decided_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE export_id = ?')->execute([$approve ? 'APPROVED' : 'REJECTED', $user['accountId'], $id]);
+            Db::call($this->pdo, 'usp_export_decide', ['export_id' => $id, 'status' => $approve ? 'APPROVED' : 'REJECTED', 'approved_by' => $user['accountId']]);
             Audit::record($this->pdo, $user, $approve ? 'export.approved' : 'export.rejected', 'export', $id, ['batch' => $e['batch_ref']], $ip);
             return [200, ['exportId' => $id, 'status' => $approve ? 'APPROVED' : 'REJECTED']];
         });
@@ -219,13 +193,11 @@ final class FinanceService
     /** @return array{0:string,1:string,2:string} csv text, file name, checksum. Only approved exports can be downloaded. */
     public function download(string $id, array $user, ?string $ip): array
     {
-        $st = $this->pdo->prepare('SELECT csv, batch_ref, checksum, status FROM accounting_export WHERE export_id = ?');
-        $st->execute([$id]);
-        $e = $st->fetch() ?: throw new ApiException(404, 'NOT_FOUND');
+        $e = Db::call($this->pdo, 'usp_export_get', ['export_id' => $id])->fetch() ?: throw new ApiException(404, 'NOT_FOUND');
         if ($e['status'] !== 'APPROVED') {
             throw new ApiException(409, 'NOT_APPROVED', 'This export has not been approved');
         }
-        $this->pdo->prepare('UPDATE accounting_export SET downloads = downloads + 1 WHERE export_id = ?')->execute([$id]);
+        Db::call($this->pdo, 'usp_export_addDownload', ['export_id' => $id]);
         Audit::record($this->pdo, $user, 'export.downloaded', 'export', $id, ['batch' => $e['batch_ref']], $ip);
         return [(string) $e['csv'], $e['batch_ref'] . '.csv', (string) $e['checksum']];
     }
@@ -236,12 +208,8 @@ final class FinanceService
     public function revenue(array $q): array
     {
         [$from, $to] = self::range($q);
-        $day = sprintf(self::MANILA, 'created_at');
-        $pay = $this->pdo->prepare("SELECT {$day} AS day, COALESCE(method, provider) AS pay_method, SUM(amount_minor) AS total, COUNT(*) AS n FROM payment WHERE status = 'CAPTURED' AND {$day} BETWEEN ? AND ? GROUP BY {$day}, COALESCE(method, provider)");
-        $pay->execute([$from, $to]);
-        $rdy = sprintf(self::MANILA, 'completed_at');
-        $ref = $this->pdo->prepare("SELECT {$rdy} AS day, SUM(amount_minor) AS total FROM refund WHERE status = 'COMPLETED' AND {$rdy} BETWEEN ? AND ? GROUP BY {$rdy}");
-        $ref->execute([$from, $to]);
+        $pay = Db::call($this->pdo, 'usp_report_paymentsByDay', ['from_date' => $from, 'to_date' => $to]);
+        $ref = Db::call($this->pdo, 'usp_report_refundsByDay', ['from_date' => $from, 'to_date' => $to]);
         $perDay = [];
         $byMethod = [];
         foreach ($pay->fetchAll() as $r) {
@@ -262,21 +230,21 @@ final class FinanceService
             $tr += $r;
         }
         arsort($byMethod);
+        $counts = Db::call($this->pdo, 'usp_report_openCounts')->fetch();
         return [200, [
             'from' => $from, 'to' => $to, 'currency' => 'PHP', 'days' => $days,
             'totals' => ['paymentsMinor' => $tp, 'refundsMinor' => $tr, 'netMinor' => $tp - $tr],
             'byMethod' => array_map(fn ($m, $v) => ['method' => $m, 'amountMinor' => $v], array_keys($byMethod), array_values($byMethod)),
             'reconciliation' => $this->reconciliation($from, $to),
-            'openRefunds' => (int) $this->pdo->query("SELECT COUNT(*) FROM refund WHERE status = 'REQUESTED'")->fetchColumn(),
-            'paymentsInReview' => (int) $this->pdo->query("SELECT COUNT(*) FROM payment WHERE status = 'REVIEW'")->fetchColumn(),
+            'openRefunds' => (int) $counts['open_refunds'],
+            'paymentsInReview' => (int) $counts['payments_in_review'],
         ]];
     }
 
     /** Share of payments matched by the end of the next business day (Mon-Fri) after they were taken. Only payments whose deadline passed count. */
     private function reconciliation(string $from, string $to): array
     {
-        $st = $this->pdo->prepare("SELECT " . sprintf(self::MANILA, 'created_at') . " AS day, reconciled_at FROM payment WHERE status = 'CAPTURED' AND " . sprintf(self::MANILA, 'created_at') . ' BETWEEN ? AND ?');
-        $st->execute([$from, $to]);
+        $st = Db::call($this->pdo, 'usp_report_reconciliationInput', ['from_date' => $from, 'to_date' => $to]);
         $due = $ok = 0;
         $now = time();
         foreach ($st->fetchAll() as $p) {
