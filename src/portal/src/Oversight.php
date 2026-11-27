@@ -5,6 +5,7 @@ namespace Portal;
 
 use Lib\ApiException;
 use Lib\Audit;
+use Lib\Db;
 use Lib\Http;
 use Lib\Peer;
 use Lib\Routing;
@@ -70,10 +71,10 @@ final class Oversight
                 }
             }
         }
-        $jobs = $this->pdo->query("SELECT status, COUNT(*) AS n FROM notification_job GROUP BY status")->fetchAll(\PDO::FETCH_KEY_PAIR);
-        $failed = $this->pdo->query("SELECT TOP (20) job_id, type, attempts, last_error, created_at FROM notification_job WHERE status IN ('FAILED') OR (status = 'PENDING' AND attempts > 0) ORDER BY created_at DESC")->fetchAll();
-        $mail = $this->pdo->query("SELECT status, COUNT(*) AS n FROM email_log WHERE created_at > DATEADD(DAY, -7, DATETRUNC(SECOND, SYSUTCDATETIME())) GROUP BY status")->fetchAll(\PDO::FETCH_KEY_PAIR);
-        $oldest = $this->pdo->query("SELECT MIN(created_at) FROM notification_job WHERE status = 'PENDING'")->fetchColumn();
+        $jobs = Db::call($this->pdo, 'usp_oversight_jobCounts')->fetchAll(\PDO::FETCH_KEY_PAIR);
+        $failed = Db::call($this->pdo, 'usp_oversight_jobsNeedingAttention')->fetchAll();
+        $mail = Db::call($this->pdo, 'usp_oversight_emailCounts')->fetchAll(\PDO::FETCH_KEY_PAIR);
+        $oldest = Db::call($this->pdo, 'usp_oversight_oldestPendingJob')->fetchColumn();
         return [
             'services' => $services, 'outbox' => $outbox,
             'notifications' => ['pending' => (int) ($jobs['PENDING'] ?? 0), 'sent' => (int) ($jobs['SENT'] ?? 0), 'failed' => (int) ($jobs['FAILED'] ?? 0), 'oldestPending' => $oldest ?: null, 'attention' => $failed],
@@ -84,6 +85,6 @@ final class Oversight
     /** Recent emails for the IT page (subject and status only, never the body). */
     public function recentEmails(int $limit = 25): array
     {
-        return $this->pdo->query('SELECT TOP (' . max(1, min(100, $limit)) . ') email_id, template, to_email, subject, status, created_at FROM email_log ORDER BY created_at DESC')->fetchAll();
+        return Db::call($this->pdo, 'usp_email_listRecent', ['limit' => max(1, min(100, $limit))])->fetchAll();
     }
 }

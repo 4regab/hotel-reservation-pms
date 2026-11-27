@@ -5,6 +5,7 @@ namespace Portal;
 
 use Lib\ApiException;
 use Lib\Audit;
+use Lib\Db;
 use Lib\Rbac;
 use Lib\Tx;
 use Lib\Uuid;
@@ -42,10 +43,12 @@ final class Accounts
         self::checkPassword((string) ($b['password'] ?? ''), $email);
         $id = Uuid::v4();
         try {
-            $this->pdo->prepare("INSERT INTO account (account_id, email, password_hash, role, full_name, phone, totp_secret, marketing_consent, created_at) VALUES (?, ?, ?, 'guest', ?, ?, NULL, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))")
-                ->execute([$id, $email, password_hash((string) $b['password'], PASSWORD_DEFAULT), $name, $phone, !empty($b['marketingConsent']) ? 1 : 0]);
+            Db::call($this->pdo, 'usp_account_insert', [
+                'account_id' => $id, 'email' => $email, 'password_hash' => password_hash((string) $b['password'], PASSWORD_DEFAULT), 'role' => 'guest',
+                'full_name' => $name, 'phone' => $phone, 'totp_secret' => null, 'marketing_consent' => !empty($b['marketingConsent']) ? 1 : 0,
+            ]);
         } catch (\PDOException $e) {
-            if (\Lib\Db::isDuplicateKey($e)) {
+            if (Db::isDuplicateKey($e)) {
                 throw new ApiException(409, 'EMAIL_TAKEN', 'An account with this email already exists. Sign in or reset your password.');
             }
             throw $e;
@@ -59,9 +62,7 @@ final class Accounts
     {
         $this->limit->hit('reset:' . $ip, 5, 3600);
         $email = strtolower(trim($email));
-        $st = $this->pdo->prepare('SELECT account_id FROM account WHERE email = ? AND active = 1');
-        $st->execute([$email]);
-        $id = $st->fetchColumn();
+        $id = Db::call($this->pdo, 'usp_account_findActiveByEmail', ['email' => $email])->fetchColumn();
         if ($id === false) {
             return;
         }
@@ -74,32 +75,27 @@ final class Accounts
     {
         $token = bin2hex(random_bytes(32));
         Tx::run($this->pdo, function () use ($accountId, $token): void {
-            $this->pdo->prepare('INSERT INTO password_reset (token_hash, account_id, expires_at, created_at) VALUES (?, ?, DATEADD(SECOND, CAST(? AS INT), DATETRUNC(SECOND, SYSUTCDATETIME())), DATETRUNC(SECOND, SYSUTCDATETIME()))')
-                ->execute([hash('sha256', $token), $accountId, self::RESET_TTL]);
+            Db::call($this->pdo, 'usp_reset_create', ['token_hash' => hash('sha256', $token), 'account_id' => $accountId, 'ttl_seconds' => self::RESET_TTL]);
             Notifications::queue($this->pdo, 'EMAIL_PASSWORD_RESET', null, $accountId, ['token' => $token]);
         });
     }
 
     public function resetTokenValid(string $token): bool
     {
-        $st = $this->pdo->prepare('SELECT 1 FROM password_reset WHERE token_hash = ? AND used_at IS NULL AND expires_at > DATETRUNC(SECOND, SYSUTCDATETIME())');
-        $st->execute([hash('sha256', $token)]);
-        return $st->fetchColumn() !== false;
+        return Db::call($this->pdo, 'usp_reset_isValid', ['token_hash' => hash('sha256', $token)])->fetchColumn() !== false;
     }
 
     public function completeReset(string $token, string $newPassword, string $ip): void
     {
         $this->limit->hit('reset-confirm:' . $ip, 10, 3600);
         Tx::run($this->pdo, function () use ($token, $newPassword, $ip): void {
-            $st = $this->pdo->prepare('SELECT r.account_id, a.email FROM password_reset r WITH (UPDLOCK, ROWLOCK) JOIN account a WITH (UPDLOCK, ROWLOCK) ON a.account_id = r.account_id WHERE r.token_hash = ? AND r.used_at IS NULL AND r.expires_at > DATETRUNC(SECOND, SYSUTCDATETIME()) AND a.active = 1');
-            $st->execute([hash('sha256', $token)]);
-            $r = $st->fetch();
+            $r = Db::call($this->pdo, 'usp_reset_lock', ['token_hash' => hash('sha256', $token)])->fetch();
             if ($r === false) {
                 throw new ApiException(410, 'RESET_LINK_INVALID', 'This link has expired or was already used. Ask for a new one.');
             }
             self::checkPassword($newPassword, $r['email']);
-            $this->pdo->prepare('UPDATE account SET password_hash = ?, failed_logins = 0, locked_until = NULL WHERE account_id = ?')->execute([password_hash($newPassword, PASSWORD_DEFAULT), $r['account_id']]);
-            $this->pdo->prepare('UPDATE password_reset SET used_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE account_id = ? AND used_at IS NULL')->execute([$r['account_id']]);
+            Db::call($this->pdo, 'usp_account_setPassword', ['account_id' => $r['account_id'], 'password_hash' => password_hash($newPassword, PASSWORD_DEFAULT), 'clear_lock' => 1]);
+            Db::call($this->pdo, 'usp_reset_markUsed', ['account_id' => $r['account_id']]);
             $this->dropSessions($r['account_id']);
             Audit::record($this->pdo, ['accountId' => $r['account_id'], 'role' => 'guest'], 'account.password_reset', 'account', $r['account_id'], [], $ip);
         });
@@ -108,14 +104,12 @@ final class Accounts
     public function changePassword(string $accountId, string $current, string $new, ?string $ip): void
     {
         $this->limit->hit('chpw:' . $accountId, 10, 3600);
-        $st = $this->pdo->prepare('SELECT password_hash, email, role FROM account WHERE account_id = ?');
-        $st->execute([$accountId]);
-        $a = $st->fetch() ?: throw new ApiException(401, 'UNAUTHENTICATED');
+        $a = Db::call($this->pdo, 'usp_account_getCredentials', ['account_id' => $accountId])->fetch() ?: throw new ApiException(401, 'UNAUTHENTICATED');
         if (!password_verify($current, $a['password_hash'])) {
             throw new ApiException(403, 'WRONG_PASSWORD', 'Your current password is not correct.');
         }
         self::checkPassword($new, $a['email']);
-        $this->pdo->prepare('UPDATE account SET password_hash = ? WHERE account_id = ?')->execute([password_hash($new, PASSWORD_DEFAULT), $accountId]);
+        Db::call($this->pdo, 'usp_account_setPassword', ['account_id' => $accountId, 'password_hash' => password_hash($new, PASSWORD_DEFAULT)]);
         Audit::record($this->pdo, ['accountId' => $accountId, 'role' => $a['role']], 'account.password_changed', 'account', $accountId, [], $ip);
     }
 
@@ -126,28 +120,15 @@ final class Accounts
         if ($name === '' || mb_strlen($name) > 120 || $phone === '' || strlen($phone) > 40) {
             throw new ApiException(422, 'INVALID_REQUEST', 'Enter your full name and a phone number.');
         }
-        $this->pdo->prepare('UPDATE account SET full_name = ?, phone = ?, marketing_consent = ? WHERE account_id = ?')->execute([$name, $phone, $marketing ? 1 : 0, $accountId]);
+        Db::call($this->pdo, 'usp_account_updateProfile', ['account_id' => $accountId, 'full_name' => $name, 'phone' => $phone, 'marketing_consent' => $marketing ? 1 : 0]);
     }
 
     // ---- user and role administration (IT lead) ------------------------------------------------------------
 
     public function listAccounts(string $role = '', string $q = ''): array
     {
-        $where = ['anonymized_at IS NULL'];
-        $args = [];
-        if (in_array($role, Rbac::ROLES, true)) {
-            $where[] = 'role = ?';
-            $args[] = $role;
-        }
-        if ($q !== '') {
-            $where[] = "(email LIKE ? ESCAPE '\\' OR full_name LIKE ? ESCAPE '\\')";
-            $like = '%' . str_replace(['%', '_', '['], ['\\%', '\\_', '\\['], $q) . '%';
-            array_push($args, $like, $like);
-        }
-        // Staff first in the order the role list was declared (MySQL sorted the ENUM that way), guests last, then by name.
-        $st = $this->pdo->prepare('SELECT TOP (200) account_id, email, full_name, role, active, last_login_at, locked_until, CASE WHEN totp_secret IS NOT NULL THEN 1 ELSE 0 END AS has_totp, created_at FROM account WHERE ' . implode(' AND ', $where) . " ORDER BY CASE role WHEN 'reception' THEN 1 WHEN 'housekeeping' THEN 2 WHEN 'maintenance' THEN 3 WHEN 'cashier' THEN 4 WHEN 'manager' THEN 5 WHEN 'it' THEN 6 WHEN 'steward' THEN 7 ELSE 8 END, full_name");
-        $st->execute($args);
-        return $st->fetchAll();
+        $like = $q === '' ? null : '%' . str_replace(['%', '_', '['], ['\\%', '\\_', '\\['], $q) . '%';
+        return Db::call($this->pdo, 'usp_account_list', ['role' => in_array($role, Rbac::ROLES, true) ? $role : null, 'like' => $like])->fetchAll();
     }
 
     /** @return array{accountId:string,tempPassword:string,totpSecret:string,otpauthUri:string} shown once */
@@ -163,10 +144,12 @@ final class Accounts
         $secret = self::randomBase32();
         $id = Uuid::v4();
         try {
-            $this->pdo->prepare('INSERT INTO account (account_id, email, password_hash, role, full_name, phone, totp_secret, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))')
-                ->execute([$id, $email, password_hash($temp, PASSWORD_DEFAULT), $role, $name, trim((string) ($b['phone'] ?? '')), $secret]);
+            Db::call($this->pdo, 'usp_account_insert', [
+                'account_id' => $id, 'email' => $email, 'password_hash' => password_hash($temp, PASSWORD_DEFAULT), 'role' => $role,
+                'full_name' => $name, 'phone' => trim((string) ($b['phone'] ?? '')), 'totp_secret' => $secret,
+            ]);
         } catch (\PDOException $e) {
-            if (\Lib\Db::isDuplicateKey($e)) {
+            if (Db::isDuplicateKey($e)) {
                 throw new ApiException(409, 'EMAIL_TAKEN', 'An account with this email already exists.');
             }
             throw $e;
@@ -185,7 +168,7 @@ final class Accounts
         if (($a['role'] === 'guest') !== ($role === 'guest')) {
             throw new ApiException(422, 'INVALID_REQUEST', 'A guest account cannot become staff, or the other way round. Create a staff account instead.');
         }
-        $this->pdo->prepare('UPDATE account SET role = ? WHERE account_id = ?')->execute([$role, $id]);
+        Db::call($this->pdo, 'usp_account_setRole', ['account_id' => $id, 'role' => $role]);
         $this->dropSessions($id);
         Audit::record($this->pdo, $actor, 'user.role_changed', 'account', $id, ['from' => $a['role'], 'to' => $role], $ip);
     }
@@ -194,7 +177,7 @@ final class Accounts
     {
         $this->guardOther($actor, $id);
         $this->account($id);
-        $this->pdo->prepare('UPDATE account SET active = ?, failed_logins = 0, locked_until = NULL WHERE account_id = ?')->execute([$active ? 1 : 0, $id]);
+        Db::call($this->pdo, 'usp_account_setActive', ['account_id' => $id, 'active' => $active ? 1 : 0]);
         if (!$active) {
             $this->dropSessions($id);
         }
@@ -209,7 +192,7 @@ final class Accounts
             throw new ApiException(422, 'INVALID_REQUEST', 'Guests do not use a second factor.');
         }
         $secret = self::randomBase32();
-        $this->pdo->prepare('UPDATE account SET totp_secret = ? WHERE account_id = ?')->execute([$secret, $id]);
+        Db::call($this->pdo, 'usp_account_setTotp', ['account_id' => $id, 'totp_secret' => $secret]);
         $this->dropSessions($id);
         Audit::record($this->pdo, $actor, 'user.totp_reset', 'account', $id, [], $ip);
         return ['totpSecret' => $secret, 'otpauthUri' => self::otpauth($a['email'], $secret)];
@@ -229,10 +212,8 @@ final class Accounts
         if ($ids === []) {
             return [];
         }
-        $st = $this->pdo->prepare('SELECT account_id, full_name, role FROM account WHERE account_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
-        $st->execute($ids);
         $out = [];
-        foreach ($st->fetchAll() as $a) {
+        foreach (Db::call($this->pdo, 'usp_account_labels', ['ids' => json_encode($ids)])->fetchAll() as $a) {
             $out[$a['account_id']] = $a['full_name'] . ' (' . $a['role'] . ')';
         }
         return $out;
@@ -241,7 +222,7 @@ final class Accounts
     public function dropSessions(string $accountId): void
     {
         // Session data is the serialized PHP session, which holds the account id as plain text.
-        $this->pdo->prepare('DELETE FROM session WHERE data LIKE ?')->execute(['%' . $accountId . '%']);
+        Db::call($this->pdo, 'usp_session_dropForAccount', ['account_id' => $accountId]);
     }
 
     private function guardOther(array $actor, string $id): void
@@ -253,9 +234,7 @@ final class Accounts
 
     private function account(string $id): array
     {
-        $st = $this->pdo->prepare('SELECT account_id, email, role FROM account WHERE account_id = ? AND anonymized_at IS NULL');
-        $st->execute([$id]);
-        return $st->fetch() ?: throw new ApiException(404, 'NOT_FOUND');
+        return Db::call($this->pdo, 'usp_account_get', ['account_id' => $id])->fetch() ?: throw new ApiException(404, 'NOT_FOUND');
     }
 
     public static function randomPassword(): string
