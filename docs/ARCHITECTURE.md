@@ -63,7 +63,7 @@ the four end-to-end suites on a **SQL Server 2025** service container.
 
 ## Diagram
 
-![System architecture: clients, the Portal, three services, four databases and the event delivery](architecture.png)
+![System architecture and tech stack: clients and the frontend, the Portal, three backend services, four databases, the event delivery, and the frontend, backend and data stacks](architecture.png)
 
 Editable source: [architecture.drawio](architecture.drawio). Open it in [draw.io](https://app.diagrams.net) (File, Open from, Device).
 
