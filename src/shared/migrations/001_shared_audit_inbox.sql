@@ -3,6 +3,7 @@
 -- The migration runner applies this file to each service database after that service's own migrations,
 -- when the tables named on the first line exist there. A procedure never starts or ends a transaction: the caller (Lib\Tx::run) owns it.
 
+-- Appends one entry to the audit log (who, what, which record, from which address).
 CREATE OR ALTER PROCEDURE dbo.usp_audit_write
   @actor_id    NVARCHAR(64),
   @actor_role  NVARCHAR(20),
@@ -19,6 +20,7 @@ BEGIN
 END;
 GO
 
+-- Lists audit entries newest first. Filters by action prefix, actor and date range; every filter is optional (NULL = no filter).
 CREATE OR ALTER PROCEDURE dbo.usp_audit_search
   @action_prefix NVARCHAR(60) = NULL,
   @actor         NVARCHAR(64) = NULL,
@@ -44,6 +46,7 @@ BEGIN
 END;
 GO
 
+-- Records that an incoming event was handled. Returns affected = 1 the first time and 0 for a repeat, so a consumer can skip duplicates.
 CREATE OR ALTER PROCEDURE dbo.usp_inbox_record
   @event_id NCHAR(36)
 AS

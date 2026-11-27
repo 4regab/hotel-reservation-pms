@@ -18,6 +18,8 @@ jobs:
         run: bash scripts/lint.sh
       - name: Service boundaries (no service uses another service's code)
         run: php scripts/check-boundaries.php
+      - name: No SQL text in PHP (data access goes through stored procedures)
+        run: php scripts/check-no-inline-sql.php
       - name: Logic checks (no database, no network)
         run: php tests/unit/run.php
       - name: Static analysis (PHPStan level 5, known older findings in the baseline)

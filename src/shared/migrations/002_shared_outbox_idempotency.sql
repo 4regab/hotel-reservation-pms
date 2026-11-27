@@ -2,6 +2,7 @@
 -- Stored procedures and views for the event outbox and the Idempotency-Key records. The portal has neither table, so the
 -- migration runner skips this file there. A procedure never starts or ends a transaction: the caller (Lib\Tx::run) owns it.
 
+-- Outbox deliveries that are not yet DELIVERED, with the event type and last error.
 CREATE OR ALTER VIEW dbo.vw_outbox_stuck
 AS
   SELECT d.event_id AS eventId, d.handler_name AS handler, d.status, d.attempt_count AS attempts,
@@ -11,6 +12,7 @@ AS
    WHERE d.status <> N'DELIVERED';
 GO
 
+-- Outbox deliveries in PENDING state, with their payload and next attempt time.
 CREATE OR ALTER VIEW dbo.vw_outbox_due
 AS
   SELECT d.event_id, d.handler_name, d.attempt_count, d.next_attempt_at, o.created_at, o.payload
@@ -19,6 +21,7 @@ AS
    WHERE d.status = N'PENDING';
 GO
 
+-- Counts outbox deliveries by status, for the status page.
 CREATE OR ALTER PROCEDURE dbo.usp_outbox_counts
 AS
 BEGIN
@@ -27,6 +30,7 @@ BEGIN
 END;
 GO
 
+-- Lists the undelivered outbox entries, oldest first, up to a limit.
 CREATE OR ALTER PROCEDURE dbo.usp_outbox_stuck
   @row_limit INT = 20
 AS
@@ -39,6 +43,7 @@ BEGIN
 END;
 GO
 
+-- Queues one event and creates one PENDING delivery row per handler named in the JSON list.
 CREATE OR ALTER PROCEDURE dbo.usp_outbox_add
   @event_id          NCHAR(36),
   @event_type        NVARCHAR(64),
@@ -59,6 +64,7 @@ BEGIN
 END;
 GO
 
+-- Returns the PENDING deliveries whose retry time has come, oldest first, up to a limit.
 CREATE OR ALTER PROCEDURE dbo.usp_outbox_due
   @row_limit INT = 50
 AS
@@ -72,6 +78,7 @@ BEGIN
 END;
 GO
 
+-- Marks one delivery as DELIVERED and clears its last error.
 CREATE OR ALTER PROCEDURE dbo.usp_outbox_mark_delivered
   @event_id     NCHAR(36),
   @handler_name NVARCHAR(32)
@@ -84,6 +91,7 @@ BEGIN
 END;
 GO
 
+-- Saves the attempt count, new status and error of a failed delivery, and sets its next retry time.
 CREATE OR ALTER PROCEDURE dbo.usp_outbox_mark_failed
   @event_id      NCHAR(36),
   @handler_name  NVARCHAR(32),
@@ -102,6 +110,7 @@ BEGIN
 END;
 GO
 
+-- Looks up the saved answer for an Idempotency-Key and caller, so a repeated request gets the same reply.
 CREATE OR ALTER PROCEDURE dbo.usp_idem_find
   @idem_key NVARCHAR(128),
   @caller   NVARCHAR(64)
@@ -115,6 +124,7 @@ BEGIN
 END;
 GO
 
+-- Saves the answer for an Idempotency-Key and caller. An existing key is overwritten.
 CREATE OR ALTER PROCEDURE dbo.usp_idem_save
   @idem_key        NVARCHAR(128),
   @caller          NVARCHAR(64),
