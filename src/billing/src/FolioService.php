@@ -5,6 +5,7 @@ namespace Billing;
 
 use Lib\ApiException;
 use Lib\Audit;
+use Lib\Db;
 use Lib\Outbox;
 use Lib\Tx;
 use Lib\Uuid;
@@ -18,9 +19,10 @@ final class FolioService
 
     public function summary(string $reservationId, bool $lock = false): array
     {
-        $f = $this->one('SELECT folio_id, status, total_minor, currency FROM folio' . ($lock ? ' WITH (UPDLOCK, ROWLOCK)' : '') . ' WHERE reservation_id = ?', [$reservationId]);
-        $paid = (int) $this->col("SELECT COALESCE(SUM(amount_minor), 0) FROM payment WHERE reservation_id = ? AND status = 'CAPTURED'", [$reservationId]);
-        $refunded = (int) $this->col("SELECT COALESCE(SUM(r.amount_minor), 0) FROM refund r JOIN payment p ON p.payment_id = r.payment_id WHERE p.reservation_id = ? AND r.status = 'COMPLETED'", [$reservationId]);
+        $row = $this->one('usp_folio_getSummary', ['reservation_id' => $reservationId, 'lock' => $lock ? 1 : 0]);
+        $f = $row['folio_id'] === null ? null : $row;
+        $paid = (int) $row['paid_minor'];
+        $refunded = (int) $row['refunded_minor'];
         $total = $f === null ? 0 : (int) $f['total_minor'];
         return [
             'reservationId' => $reservationId, 'folioOpen' => $f !== null && $f['status'] === 'OPEN', 'folioStatus' => $f['status'] ?? null,
@@ -33,27 +35,18 @@ final class FolioService
     public function open(string $reservationId, int $amountMinor, string $currency, string $guarantee = 'NONE'): void
     {
         Tx::run($this->pdo, function () use ($reservationId, $amountMinor, $currency, $guarantee): void {
-            if ($this->one('SELECT 1 AS x FROM folio WITH (UPDLOCK, HOLDLOCK) WHERE reservation_id = ?', [$reservationId]) !== null) {
-                return;
-            }
-            $id = Uuid::v4();
-            $this->pdo->prepare("INSERT INTO folio (folio_id, reservation_id, status, total_minor, currency, created_at) VALUES (?, ?, 'OPEN', ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))")->execute([$id, $reservationId, $amountMinor, $currency]);
-            $this->pdo->prepare('INSERT INTO charge (charge_id, folio_id, description, amount_minor, currency, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))')
-                ->execute([Uuid::v4(), $id, 'Room charge', $amountMinor, $currency, 'system']);
-            $this->pdo->prepare('UPDATE payment SET folio_id = ? WHERE reservation_id = ? AND folio_id IS NULL')->execute([$id, $reservationId]);
-            if ($guarantee === 'OTA_PREPAID') {
-                // The travel partner pays the hotel directly; record it so the bill balances.
-                $pid = Uuid::v4();
-                $this->pdo->prepare("INSERT INTO payment (payment_id, reservation_id, folio_id, provider, method, provider_payment_id, provider_event_id, amount_minor, currency, status, created_at) SELECT ?, ?, ?, 'OTA', 'PARTNER', ?, NULL, ?, ?, 'CAPTURED', DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE NOT EXISTS (SELECT 1 FROM payment WITH (UPDLOCK, HOLDLOCK) WHERE provider_payment_id = ?)")
-                    ->execute([$pid, $reservationId, $id, 'ota-' . $reservationId, $amountMinor, $currency, 'ota-' . $reservationId]);
-            }
+            // The procedure does nothing when the bill already exists. Ids are made here and passed in.
+            Db::call($this->pdo, 'usp_folio_open', [
+                'reservation_id' => $reservationId, 'folio_id' => Uuid::v4(), 'charge_id' => Uuid::v4(), 'payment_id' => Uuid::v4(),
+                'amount_minor' => $amountMinor, 'currency' => $currency, 'guarantee' => $guarantee,
+            ]);
         });
     }
 
     /** StayCheckedOut: close the bill. */
     public function close(string $reservationId): void
     {
-        $this->pdo->prepare("UPDATE folio SET status = 'CLOSED' WHERE reservation_id = ?")->execute([$reservationId]);
+        Db::call($this->pdo, 'usp_folio_close', ['reservation_id' => $reservationId]);
     }
 
     public function postCharge(string $reservationId, string $description, int $amountMinor, array $user, ?string $ip = null): array
@@ -62,15 +55,16 @@ final class FolioService
             throw new ApiException(422, 'INVALID_REQUEST', 'description and a positive amountMinor (centavos) are required');
         }
         return Tx::run($this->pdo, function () use ($reservationId, $description, $amountMinor, $user, $ip): array {
-            $f = $this->one('SELECT folio_id, status, currency FROM folio WITH (UPDLOCK, ROWLOCK) WHERE reservation_id = ?', [$reservationId]) ?? throw new ApiException(404, 'NOT_FOUND', 'No open bill for this reservation');
+            $f = $this->one('usp_folio_getForUpdate', ['reservation_id' => $reservationId]) ?? throw new ApiException(404, 'NOT_FOUND', 'No open bill for this reservation');
             if ($f['status'] !== 'OPEN') {
                 throw new ApiException(409, 'FOLIO_CLOSED');
             }
             $id = Uuid::v4();
-            $this->pdo->prepare('INSERT INTO charge (charge_id, folio_id, description, amount_minor, currency, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))')
-                ->execute([$id, $f['folio_id'], $description, $amountMinor, $f['currency'], $user['accountId']]);
+            Db::call($this->pdo, 'usp_folio_addCharge', [
+                'folio_id' => $f['folio_id'], 'charge_id' => $id, 'description' => $description, 'amount_minor' => $amountMinor,
+                'currency' => $f['currency'], 'created_by' => $user['accountId'],
+            ]);
             Audit::record($this->pdo, $user, 'folio.charge', 'reservation', $reservationId, ['chargeId' => $id, 'amountMinor' => $amountMinor], $ip);
-            $this->pdo->prepare('UPDATE folio SET total_minor = total_minor + ? WHERE folio_id = ?')->execute([$amountMinor, $f['folio_id']]);
             return [201, ['chargeId' => $id] + $this->summary($reservationId)];
         });
     }
@@ -91,9 +85,11 @@ final class FolioService
                 return [200, $s + ['settledMinor' => 0]];
             }
             $paymentId = Uuid::v4();
-            $f = $this->one('SELECT folio_id FROM folio WHERE reservation_id = ?', [$reservationId]);
-            $this->pdo->prepare("INSERT INTO payment (payment_id, reservation_id, folio_id, provider, method, provider_payment_id, provider_event_id, amount_minor, currency, status, created_at) VALUES (?, ?, ?, 'ONSITE', ?, ?, NULL, ?, ?, 'CAPTURED', DATETRUNC(SECOND, SYSUTCDATETIME()))")
-                ->execute([$paymentId, $reservationId, $f['folio_id'], $method, 'onsite-' . $paymentId, $s['balanceMinor'], $s['currency']]);
+            $f = $this->one('usp_folio_getId', ['reservation_id' => $reservationId]);
+            Db::call($this->pdo, 'usp_payment_insertOnsite', [
+                'payment_id' => $paymentId, 'reservation_id' => $reservationId, 'folio_id' => $f['folio_id'], 'method' => $method,
+                'provider_payment_id' => 'onsite-' . $paymentId, 'amount_minor' => $s['balanceMinor'], 'currency' => $s['currency'],
+            ]);
             Audit::record($this->pdo, $user, 'payment.onsite', 'reservation', $reservationId, ['paymentId' => $paymentId, 'amountMinor' => $s['balanceMinor'], 'method' => $method], $ip);
             Outbox::add($this->pdo, 'PaymentCaptured', $paymentId, 1, $reservationId, ['paymentId' => $paymentId, 'reservationId' => $reservationId, 'amountMinor' => $s['balanceMinor'], 'currency' => $s['currency'], 'method' => 'ONSITE']);
             return [200, $this->summary($reservationId) + ['settledMinor' => $s['balanceMinor'], 'settledBy' => $accountId]];
@@ -103,17 +99,18 @@ final class FolioService
     /** One refund request per payment (unique payment_id). Returns the refund id. */
     public function requestRefund(string $paymentId, int $amountMinor, string $requestedBy, string $reason, ?array $user = null, ?string $ip = null): array
     {
-        $p = $this->one('SELECT payment_id, amount_minor, status FROM payment WHERE payment_id = ?', [$paymentId]) ?? throw new ApiException(404, 'NOT_FOUND', 'Unknown payment');
+        $p = $this->one('usp_payment_get', ['payment_id' => $paymentId]) ?? throw new ApiException(404, 'NOT_FOUND', 'Unknown payment');
         if ($p['status'] !== 'CAPTURED' || $amountMinor <= 0 || $amountMinor > (int) $p['amount_minor']) {
             throw new ApiException(422, 'INVALID_REQUEST', 'Refund must be a positive amount up to the captured payment');
         }
         $id = Uuid::v4();
         try {
-            $this->pdo->prepare("INSERT INTO refund (refund_id, payment_id, amount_minor, approval, status, requested_by, reason, created_at) VALUES (?, ?, ?, 'PENDING', 'REQUESTED', ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))")
-                ->execute([$id, $paymentId, $amountMinor, $requestedBy, $reason]);
+            Db::call($this->pdo, 'usp_refund_request', [
+                'refund_id' => $id, 'payment_id' => $paymentId, 'amount_minor' => $amountMinor, 'requested_by' => $requestedBy, 'reason' => $reason,
+            ]);
         } catch (\PDOException $e) {
-            if (\Lib\Db::isDuplicateKey($e)) {
-                $existing = $this->one('SELECT refund_id FROM refund WHERE payment_id = ?', [$paymentId]);
+            if (Db::isDuplicateKey($e)) {
+                $existing = $this->one('usp_refund_getByPayment', ['payment_id' => $paymentId]);
                 throw new ApiException(409, 'REFUND_ALREADY_REQUESTED', 'This payment already has a refund request', ['refundId' => $existing['refund_id']]);
             }
             throw $e;
@@ -125,7 +122,7 @@ final class FolioService
     /** RefundRequested event from Booking. Finds the payment by id or by reservation. Duplicate requests are ignored. */
     public function requestFromEvent(array $d): void
     {
-        $paymentId = $d['paymentId'] ?? $this->col("SELECT TOP (1) payment_id FROM payment WHERE reservation_id = ? AND status = 'CAPTURED' ORDER BY created_at", [$d['reservationId']]);
+        $paymentId = $d['paymentId'] ?? $this->col('usp_payment_getFirstCaptured', ['reservation_id' => $d['reservationId']]);
         if (!$paymentId) {
             return;
         }
@@ -142,7 +139,7 @@ final class FolioService
     public function approveRefund(string $refundId, array $user, ?string $ip = null): array
     {
         $r = Tx::run($this->pdo, function () use ($refundId, $user, $ip): array {
-            $r = $this->one('SELECT r.refund_id, r.amount_minor, r.status, r.requested_by, p.provider_payment_id, p.reservation_id, p.payment_id, p.currency FROM refund r WITH (UPDLOCK, ROWLOCK) JOIN payment p ON p.payment_id = r.payment_id WHERE r.refund_id = ?', [$refundId])
+            $r = $this->one('usp_refund_getForApproval', ['refund_id' => $refundId])
                 ?? throw new ApiException(404, 'NOT_FOUND');
             RefundPolicy::assertCanApprove($user['role'], $user['accountId'], $r['requested_by']);
             if ($r['status'] === 'COMPLETED') {
@@ -151,7 +148,7 @@ final class FolioService
             if ($r['status'] !== 'REQUESTED') {
                 throw new ApiException(409, 'REFUND_NOT_PENDING', 'This refund was already decided');
             }
-            $this->pdo->prepare("UPDATE refund SET approval = 'APPROVED', approved_by = ? WHERE refund_id = ?")->execute([$user['accountId'], $refundId]);
+            Db::call($this->pdo, 'usp_refund_approve', ['refund_id' => $refundId, 'approved_by' => $user['accountId']]);
             Audit::record($this->pdo, $user, 'refund.approved', 'refund', $refundId, ['amountMinor' => (int) $r['amount_minor']], $ip);
             return $r;
         });
@@ -159,7 +156,7 @@ final class FolioService
             $this->provider->refund((string) $r['provider_payment_id'], (int) $r['amount_minor']);
         }
         Tx::run($this->pdo, function () use ($r, $refundId): void {
-            $this->pdo->prepare("UPDATE refund SET status = 'COMPLETED', completed_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE refund_id = ? AND status <> 'COMPLETED'")->execute([$refundId]);
+            Db::call($this->pdo, 'usp_refund_complete', ['refund_id' => $refundId]);
             Outbox::add($this->pdo, 'RefundCompleted', $refundId, 1, $r['reservation_id'], [
                 'refundId' => $refundId, 'paymentId' => $r['payment_id'], 'reservationId' => $r['reservation_id'], 'amountMinor' => (int) $r['amount_minor'], 'currency' => $r['currency'],
             ]);
@@ -167,17 +164,13 @@ final class FolioService
         return [200, ['refundId' => $refundId, 'status' => 'COMPLETED', 'approval' => 'APPROVED']];
     }
 
-    private function one(string $sql, array $args): ?array
+    private function one(string $proc, array $params): ?array
     {
-        $st = $this->pdo->prepare($sql);
-        $st->execute($args);
-        return $st->fetch() ?: null;
+        return Db::call($this->pdo, $proc, $params)->fetch() ?: null;
     }
 
-    private function col(string $sql, array $args): mixed
+    private function col(string $proc, array $params): mixed
     {
-        $st = $this->pdo->prepare($sql);
-        $st->execute($args);
-        return $st->fetchColumn();
+        return Db::call($this->pdo, $proc, $params)->fetchColumn();
     }
 }

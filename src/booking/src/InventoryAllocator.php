@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace Booking;
 
+use Lib\Db;
+
 /** PDO side of stock handling. The arithmetic itself lives in Lib\Inventory (pure, unit-tested). */
 final class InventoryAllocator
 {
@@ -13,26 +15,21 @@ final class InventoryAllocator
     /** Create missing night rows (autocommit, call BEFORE the booking transaction starts). */
     public function ensureNights(string $roomTypeId, array $nights): void
     {
-        $st = $this->pdo->prepare(
-            'INSERT INTO inventory_night (room_type_id, stay_date, capacity, blocked, held, confirmed, ota_remaining)
-             SELECT room_type_id, CAST(? AS DATE), capacity, 0, 0, 0, 0 FROM room_type WHERE room_type_id = ?
-                AND NOT EXISTS (SELECT 1 FROM inventory_night WITH (UPDLOCK, HOLDLOCK) WHERE room_type_id = ? AND stay_date = CAST(? AS DATE))'
-        );
         foreach ($nights as $n) {
-            $st->execute([$n, $roomTypeId, $roomTypeId, $n]);
+            Db::call($this->pdo, 'usp_inventory_ensureNight', ['room_type_id' => $roomTypeId, 'stay_date' => $n]);
         }
     }
 
     /** Lock all nights in date order (consistent order prevents deadlocks). Must run inside a transaction. */
     public function lock(string $roomTypeId, array $nights): array
     {
-        return $this->load($roomTypeId, $nights, ' WITH (UPDLOCK, ROWLOCK)');
+        return $this->load($roomTypeId, $nights, true);
     }
 
     /** Unlocked read for availability search. Missing nights count as fully free. */
     public function peek(string $roomTypeId, array $nights, int $capacity): array
     {
-        $rows = $this->load($roomTypeId, $nights, '');
+        $rows = $this->load($roomTypeId, $nights, false);
         foreach ($nights as $n) {
             $rows[$n] ??= ['capacity' => $capacity, 'blocked' => 0, 'held' => 0, 'confirmed' => 0, 'ota' => 0];
         }
@@ -41,20 +38,15 @@ final class InventoryAllocator
 
     public function save(string $roomTypeId, array $rows, array $nights): void
     {
-        $st = $this->pdo->prepare('UPDATE inventory_night SET blocked = ?, held = ?, confirmed = ?, ota_remaining = ? WHERE room_type_id = ? AND stay_date = ?');
         foreach ($nights as $n) {
             $r = $rows[$n];
-            $st->execute([$r['blocked'], $r['held'], $r['confirmed'], $r['ota'], $roomTypeId, $n]);
+            Db::call($this->pdo, 'usp_inventory_saveNight', ['room_type_id' => $roomTypeId, 'stay_date' => $n, 'blocked' => $r['blocked'], 'held' => $r['held'], 'confirmed' => $r['confirmed'], 'ota_remaining' => $r['ota']]);
         }
     }
 
-    private function load(string $roomTypeId, array $nights, string $lock): array
+    private function load(string $roomTypeId, array $nights, bool $lock): array
     {
-        $st = $this->pdo->prepare(
-            'SELECT stay_date, capacity, blocked, held, confirmed, ota_remaining FROM inventory_night' . $lock . '
-              WHERE room_type_id = ? AND stay_date BETWEEN ? AND ? ORDER BY stay_date'
-        );
-        $st->execute([$roomTypeId, $nights[0], $nights[count($nights) - 1]]);
+        $st = Db::call($this->pdo, 'usp_inventory_getNights', ['room_type_id' => $roomTypeId, 'from_date' => $nights[0], 'to_date' => $nights[count($nights) - 1], 'lock' => $lock ? 1 : 0]);
         $rows = [];
         foreach ($st->fetchAll() as $r) {
             $rows[$r['stay_date']] = ['capacity' => (int) $r['capacity'], 'blocked' => (int) $r['blocked'], 'held' => (int) $r['held'], 'confirmed' => (int) $r['confirmed'], 'ota' => (int) $r['ota_remaining']];

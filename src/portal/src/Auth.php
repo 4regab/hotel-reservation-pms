@@ -5,6 +5,7 @@ namespace Portal;
 
 use Lib\ApiException;
 use Lib\Audit;
+use Lib\Db;
 use Lib\Rbac;
 use Lib\Request;
 
@@ -56,9 +57,7 @@ final class Auth
 
     public function account(string $accountId): ?array
     {
-        $st = $this->pdo->prepare('SELECT account_id, email, role, full_name, phone FROM account WHERE account_id = ?');
-        $st->execute([$accountId]);
-        return $st->fetch() ?: null;
+        return Db::call($this->pdo, 'usp_auth_getAccount', ['account_id' => $accountId])->fetch() ?: null;
     }
 
     /** Per-address limit on sign-in attempts (20 a minute). */
@@ -80,19 +79,15 @@ final class Auth
     /** Shared by the JSON API and the sign-in page. Same message for every failure, so nothing reveals which emails exist. */
     public function attempt(string $email, string $password, string $otp, string $ip): array
     {
-        $st = $this->pdo->prepare('SELECT account_id, role, password_hash, totp_secret, active, failed_logins, CASE WHEN locked_until IS NOT NULL AND locked_until > DATETRUNC(SECOND, SYSUTCDATETIME()) THEN 1 ELSE 0 END AS locked FROM account WHERE email = ?');
-        $st->execute([$email]);
-        $a = $st->fetch();
+        $a = Db::call($this->pdo, 'usp_auth_getLogin', ['email' => $email])->fetch();
         $passwordOk = password_verify($password, $a['password_hash'] ?? self::DUMMY_HASH);
         if ($a !== false && (int) $a['locked'] === 1) {
             throw new ApiException(429, 'ACCOUNT_LOCKED', 'Too many failed attempts. Try again in ' . self::LOCK_MINUTES . ' minutes or reset your password.');
         }
         $fail = function (string $why) use ($a, $ip): never {
             if ($a !== false) {
-                // MySQL read failed_logins here after the "+ 1" on the left had been applied, so the lock came one failure
-                // early (4th). T-SQL reads the old value; "+ 2" keeps the lock on the same failure as before.
-                $this->pdo->prepare('UPDATE account SET failed_logins = failed_logins + 1, locked_until = IIF(failed_logins + 2 >= CAST(? AS INT), DATEADD(MINUTE, CAST(? AS INT), DATETRUNC(SECOND, SYSUTCDATETIME())), locked_until) WHERE account_id = ?')
-                    ->execute([self::MAX_FAILS, self::LOCK_MINUTES, $a['account_id']]);
+                // The lock counting (including the "+ 2" that keeps the lock on the 5th failure) lives in usp_auth_recordFailure.
+                Db::call($this->pdo, 'usp_auth_recordFailure', ['account_id' => $a['account_id'], 'max_fails' => self::MAX_FAILS, 'lock_minutes' => self::LOCK_MINUTES]);
                 if (Rbac::isStaff($a['role'])) {
                     Audit::record($this->pdo, ['accountId' => $a['account_id'], 'role' => $a['role']], 'auth.login_failed', 'account', $a['account_id'], ['why' => $why], $ip);
                 }
@@ -110,7 +105,7 @@ final class Auth
                 $fail('otp');
             }
         }
-        $this->pdo->prepare('UPDATE account SET failed_logins = 0, locked_until = NULL, last_login_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE account_id = ?')->execute([$a['account_id']]);
+        Db::call($this->pdo, 'usp_auth_recordSuccess', ['account_id' => $a['account_id']]);
         $this->start(true);
         session_regenerate_id(true);
         $_SESSION['user'] = ['accountId' => $a['account_id'], 'role' => $a['role']];

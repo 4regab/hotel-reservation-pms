@@ -5,6 +5,7 @@ namespace Booking;
 
 use Lib\ApiException;
 use Lib\Audit;
+use Lib\Db;
 use Lib\Rbac;
 use Lib\Request;
 use Lib\ServiceAuth;
@@ -14,8 +15,6 @@ use Lib\Uuid;
 /** Guest records: search, create for walk-ins, duplicate review and merge, and the privacy operations. */
 final class GuestController
 {
-    private const ACTIVE = ['HELD', 'CONFIRMED', 'CHECKED_IN'];
-
     public function __construct(private \PDO $pdo)
     {
     }
@@ -25,20 +24,11 @@ final class GuestController
     {
         $user = ServiceAuth::authenticate($r)['user'];
         Rbac::require($user['role'], 'guest.read');
-        $args = [];
-        $where = 'g.merged_into IS NULL AND g.anonymized_at IS NULL';
+        $like = null;
         if (!empty($r->query['q'])) {
             $like = '%' . str_replace(['%', '_', '['], ['\\%', '\\_', '\\['], trim((string) $r->query['q'])) . '%';
-            $where .= " AND (g.full_name LIKE ? ESCAPE '\\' OR g.email LIKE ? ESCAPE '\\' OR g.phone LIKE ? ESCAPE '\\')";
-            array_push($args, $like, $like, $like);
         }
-        $st = $this->pdo->prepare(
-            "SELECT TOP (100) g.guest_id, g.full_name, g.email, g.phone, CASE WHEN g.account_id IS NOT NULL THEN 1 ELSE 0 END AS has_account, g.created_at,
-                    (SELECT COUNT(*) FROM reservation r WHERE r.guest_id = g.guest_id) AS bookings,
-                    (SELECT MAX(r.check_out) FROM reservation r WHERE r.guest_id = g.guest_id AND r.status IN ('CHECKED_OUT','CHECKED_IN')) AS last_stay
-               FROM guest g WHERE {$where} ORDER BY g.full_name"
-        );
-        $st->execute($args);
+        $st = Db::call($this->pdo, 'usp_guest_search', ['like' => $like]);
         return [200, ['guests' => array_map(fn ($g) => $this->guestView($g), $st->fetchAll())]];
     }
 
@@ -54,14 +44,12 @@ final class GuestController
         if ($name === '' || mb_strlen($name) > 120 || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 160 || $phone === '' || strlen($phone) > 40) {
             throw new ApiException(422, 'INVALID_REQUEST', 'fullName, a valid email and a phone number are required');
         }
-        $st = $this->pdo->prepare('SELECT TOP (1) guest_id FROM guest WHERE email = ? AND merged_into IS NULL AND anonymized_at IS NULL ORDER BY created_at');
-        $st->execute([$email]);
-        $existing = $st->fetchColumn();
+        $existing = Db::call($this->pdo, 'usp_guest_findByEmail', ['email' => $email])->fetchColumn();
         if ($existing) {
             return [200, ['guestId' => (string) $existing, 'existing' => true]];
         }
         $id = Uuid::v4();
-        $this->pdo->prepare('INSERT INTO guest (guest_id, account_id, full_name, email, phone, created_at) VALUES (?, NULL, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))')->execute([$id, $name, $email, $phone]);
+        Db::call($this->pdo, 'usp_guest_create', ['guest_id' => $id, 'account_id' => null, 'full_name' => $name, 'email' => $email, 'phone' => $phone]);
         Audit::record($this->pdo, $user, 'guest.create', 'guest', $id, [], $r->ip());
         return [201, ['guestId' => $id, 'existing' => false]];
     }
@@ -74,11 +62,7 @@ final class GuestController
     {
         $user = ServiceAuth::authenticate($r)['user'];
         Rbac::require($user['role'], 'guest.merge');
-        $guests = $this->pdo->query(
-            "SELECT g.guest_id, g.full_name, g.email, g.phone, CASE WHEN g.account_id IS NOT NULL THEN 1 ELSE 0 END AS has_account, g.created_at,
-                    (SELECT COUNT(*) FROM reservation r WHERE r.guest_id = g.guest_id) AS bookings
-               FROM guest g WHERE g.merged_into IS NULL AND g.anonymized_at IS NULL"
-        )->fetchAll();
+        $guests = Db::call($this->pdo, 'usp_guest_listActive')->fetchAll();
         return [200, ['groups' => self::groups($guests), 'activeGuests' => count($guests)]];
     }
 
@@ -154,8 +138,7 @@ final class GuestController
         }
         $note = isset($b['note']) ? mb_substr(trim((string) $b['note']), 0, 200) : null;
         $res = Tx::run($this->pdo, function () use ($keep, $drop, $user, $note): array {
-            $st = $this->pdo->prepare('SELECT * FROM guest WITH (UPDLOCK, ROWLOCK) WHERE guest_id IN (?, ?) ORDER BY guest_id');
-            $st->execute([$keep, $drop]);
+            $st = Db::call($this->pdo, 'usp_guest_lockPair', ['guest_id_a' => $keep, 'guest_id_b' => $drop]);
             $rows = array_column($st->fetchAll(), null, 'guest_id');
             if (count($rows) !== 2) {
                 throw new ApiException(404, 'NOT_FOUND', 'Guest not found');
@@ -168,16 +151,13 @@ final class GuestController
             if ($rows[$keep]['account_id'] !== null && $rows[$drop]['account_id'] !== null) {
                 throw new ApiException(409, 'BOTH_HAVE_ACCOUNTS', 'Both guests have their own sign-in. Ask them to keep one account first.');
             }
-            $moved = $this->pdo->prepare('UPDATE reservation SET guest_id = ? WHERE guest_id = ?');
-            $moved->execute([$keep, $drop]);
-            $count = $moved->rowCount();
+            $count = (int) Db::call($this->pdo, 'usp_guest_moveReservations', ['from_guest_id' => $drop, 'to_guest_id' => $keep])->fetchColumn();
             $accountId = $rows[$drop]['account_id'];
-            $this->pdo->prepare('UPDATE guest SET merged_into = ?, account_id = NULL WHERE guest_id = ?')->execute([$keep, $drop]);
+            Db::call($this->pdo, 'usp_guest_retireMerged', ['guest_id' => $drop, 'merged_into' => $keep]);
             if ($accountId !== null) {
-                $this->pdo->prepare('UPDATE guest SET account_id = ? WHERE guest_id = ?')->execute([$accountId, $keep]);
+                Db::call($this->pdo, 'usp_guest_setAccount', ['guest_id' => $keep, 'account_id' => $accountId]);
             }
-            $this->pdo->prepare('INSERT INTO guest_merge (merge_id, kept_guest_id, merged_guest_id, reservations_moved, merged_by, note, created_at) VALUES (?, ?, ?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))')
-                ->execute([Uuid::v4(), $keep, $drop, $count, $user['accountId'], $note]);
+            Db::call($this->pdo, 'usp_guest_recordMerge', ['merge_id' => Uuid::v4(), 'kept_guest_id' => $keep, 'merged_guest_id' => $drop, 'reservations_moved' => $count, 'merged_by' => $user['accountId'], 'note' => $note]);
             Audit::record($this->pdo, $user, 'guest.merge', 'guest', $keep, ['mergedGuestId' => $drop, 'reservationsMoved' => $count]);
             return ['keptGuestId' => $keep, 'mergedGuestId' => $drop, 'reservationsMoved' => $count];
         });
@@ -190,15 +170,11 @@ final class GuestController
         $user = ServiceAuth::authenticate($r)['user'];
         Rbac::require($user['role'], 'privacy.subject');
         $acc = $this->accountParam($r->query['accountId'] ?? null);
-        $g = $this->pdo->prepare('SELECT guest_id, full_name, email, phone, created_at FROM guest WHERE account_id = ?');
-        $g->execute([$acc]);
-        $guest = $g->fetch();
+        $guest = Db::call($this->pdo, 'usp_guest_getByAccount', ['account_id' => $acc])->fetch();
         if ($guest === false) {
             return [200, ['guest' => null, 'reservations' => []]];
         }
-        $res = $this->pdo->prepare('SELECT r.code, r.status, r.check_in, r.check_out, r.quantity, r.adults, r.quote_minor, r.currency, r.special_requests, r.created_at, t.name AS room_type
-                                      FROM reservation r JOIN room_type t ON t.room_type_id = r.room_type_id WHERE r.guest_id = ? ORDER BY r.created_at');
-        $res->execute([$guest['guest_id']]);
+        $res = Db::call($this->pdo, 'usp_reservation_listForGuest', ['guest_id' => $guest['guest_id']]);
         $reservations = array_map(function ($row) {
             $row['quote_minor'] = (int) $row['quote_minor'];   // BIGINT comes back as a string
             return $row;
@@ -219,14 +195,10 @@ final class GuestController
         if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || $phone === '') {
             throw new ApiException(422, 'INVALID_REQUEST', 'fullName, a valid email and phone are required');
         }
-        // The BIN2 comparisons count only rows whose text really changes (MySQL reported changed rows, SQL Server reports matched rows).
-        $st = $this->pdo->prepare(
-            'UPDATE guest SET full_name = ?, email = ?, phone = ? WHERE account_id = ? AND anonymized_at IS NULL
-                AND (full_name COLLATE Latin1_General_100_BIN2 <> ? OR email COLLATE Latin1_General_100_BIN2 <> ? OR phone COLLATE Latin1_General_100_BIN2 <> ?)'
-        );
-        $st->execute([$name, $email, $phone, $acc, $name, $email, $phone]);
+        // usp_guest_correctByAccount counts only rows whose text really changes (MySQL reported changed rows, SQL Server reports matched rows).
+        $updated = (int) Db::call($this->pdo, 'usp_guest_correctByAccount', ['account_id' => $acc, 'full_name' => $name, 'email' => $email, 'phone' => $phone])->fetchColumn();
         Audit::record($this->pdo, $user, 'privacy.correct_guest', 'account', $acc);
-        return [200, ['updated' => $st->rowCount()]];
+        return [200, ['updated' => $updated]];
     }
 
     /**
@@ -239,20 +211,14 @@ final class GuestController
         Rbac::require($user['role'], 'privacy.subject');
         $acc = $this->accountParam($r->json()['accountId'] ?? null);
         return Tx::run($this->pdo, function () use ($acc, $user): array {
-            $g = $this->pdo->prepare('SELECT guest_id FROM guest WITH (UPDLOCK, ROWLOCK) WHERE account_id = ?');
-            $g->execute([$acc]);
-            $gid = $g->fetchColumn();
+            $gid = Db::call($this->pdo, 'usp_guest_lockByAccount', ['account_id' => $acc])->fetchColumn();
             if ($gid === false) {
                 return [200, ['anonymized' => 0]];
             }
-            $live = $this->pdo->prepare('SELECT COUNT(*) FROM reservation WHERE guest_id = ? AND status IN (' . implode(',', array_fill(0, count(self::ACTIVE), '?')) . ')');
-            $live->execute([$gid, ...self::ACTIVE]);
-            if ((int) $live->fetchColumn() > 0) {
+            if ((int) Db::call($this->pdo, 'usp_reservation_countLiveForGuest', ['guest_id' => $gid])->fetchColumn() > 0) {
                 throw new ApiException(409, 'ACTIVE_BOOKINGS', 'This guest still has a held, confirmed or in-house booking. Cancel or complete it first.');
             }
-            $this->pdo->prepare("UPDATE guest SET full_name = 'Deleted guest', email = ?, phone = '', account_id = NULL, anonymized_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE guest_id = ?")
-                ->execute(['deleted-' . substr((string) $gid, 0, 8) . '@deleted.invalid', $gid]);
-            $this->pdo->prepare('UPDATE reservation SET special_requests = NULL WHERE guest_id = ?')->execute([$gid]);
+            Db::call($this->pdo, 'usp_guest_anonymize', ['guest_id' => $gid, 'email' => 'deleted-' . substr((string) $gid, 0, 8) . '@deleted.invalid']);
             Audit::record($this->pdo, $user, 'privacy.anonymize_guest', 'account', $acc);
             return [200, ['anonymized' => 1]];
         });

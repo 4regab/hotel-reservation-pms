@@ -29,6 +29,33 @@ final class Db
         return "sqlsrv:Server={$host},{$port};Encrypt=yes;TrustServerCertificate={$trust}" . ($database === '' ? '' : ";Database={$database}");
     }
 
+    /** The statement `Db::call` runs: EXEC dbo.<proc> @a = ?, @b = ?. Names are checked, so nothing from outside can reach the text. */
+    public static function callSql(string $proc, array $names): string
+    {
+        $ok = static fn (string $n): bool => preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $n) === 1;
+        if (!$ok($proc)) {
+            throw new \InvalidArgumentException("bad procedure name {$proc}");
+        }
+        foreach ($names as $n) {
+            if (!$ok((string) $n)) {
+                throw new \InvalidArgumentException("bad parameter name {$n}");
+            }
+        }
+        return 'EXEC dbo.' . $proc . ($names === [] ? '' : ' ' . implode(', ', array_map(static fn ($n): string => '@' . $n . ' = ?', $names)));
+    }
+
+    /**
+     * Call a stored procedure. Parameters are keyed by their name without the @ and travel as bound values.
+     * The procedure's result set (if any) is read from the returned statement. A procedure never opens or ends a
+     * transaction: the caller does, so one `Tx::run` still covers several calls.
+     */
+    public static function call(\PDO $pdo, string $proc, array $params = []): \PDOStatement
+    {
+        $st = $pdo->prepare(self::callSql($proc, array_keys($params)));
+        $st->execute(array_values($params));
+        return $st;
+    }
+
     /** True when the error is a duplicate key (unique constraint 2627 or unique index 2601). */
     public static function isDuplicateKey(\PDOException $e): bool
     {

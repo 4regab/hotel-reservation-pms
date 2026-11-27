@@ -5,6 +5,7 @@ namespace Portal;
 
 use Lib\ApiException;
 use Lib\Audit;
+use Lib\Db;
 use Lib\Peer;
 use Lib\Tx;
 use Lib\Uuid;
@@ -38,53 +39,40 @@ final class Privacy
         } elseif (mb_strlen($details) > 600) {
             throw new ApiException(422, 'INVALID_REQUEST', 'Keep the note under 600 characters.');
         }
-        $open = $this->pdo->prepare("SELECT COUNT(*) FROM privacy_request WHERE account_id = ? AND type = ? AND status IN ('OPEN','IN_REVIEW')");
-        $open->execute([$accountId, $type]);
-        if ((int) $open->fetchColumn() > 0) {
+        if ((int) Db::call($this->pdo, 'usp_privacy_countOpen', ['account_id' => $accountId, 'type' => $type])->fetchColumn() > 0) {
             throw new ApiException(409, 'ALREADY_OPEN', 'You already have an open request of this kind.');
         }
         $id = Uuid::v4();
-        $this->pdo->prepare("INSERT INTO privacy_request (request_id, account_id, type, details, status, due_at, created_at) VALUES (?, ?, ?, ?, 'OPEN', DATEADD(DAY, 30, DATETRUNC(SECOND, SYSUTCDATETIME())), DATETRUNC(SECOND, SYSUTCDATETIME()))")
-            ->execute([$id, $accountId, $type, $details]);
+        Db::call($this->pdo, 'usp_privacy_file', ['request_id' => $id, 'account_id' => $accountId, 'type' => $type, 'details' => $details]);
         Audit::record($this->pdo, ['accountId' => $accountId, 'role' => 'guest'], 'privacy.requested', 'privacy_request', $id, ['type' => $type], $ip);
         return $id;
     }
 
     public function forAccount(string $accountId): array
     {
-        $st = $this->pdo->prepare('SELECT request_id, type, status, details, resolution_note, due_at, created_at, completed_at, CASE WHEN result IS NOT NULL THEN 1 ELSE 0 END AS has_result FROM privacy_request WHERE account_id = ? ORDER BY created_at DESC');
-        $st->execute([$accountId]);
-        return $st->fetchAll();
+        return Db::call($this->pdo, 'usp_privacy_listForAccount', ['account_id' => $accountId])->fetchAll();
     }
 
     /** JSON file for a completed access request. Only the owner may download it. */
     public function result(string $requestId, string $accountId): string
     {
-        $st = $this->pdo->prepare("SELECT result FROM privacy_request WHERE request_id = ? AND account_id = ? AND status = 'COMPLETED' AND type = 'ACCESS'");
-        $st->execute([$requestId, $accountId]);
-        $r = $st->fetchColumn();
+        $r = Db::call($this->pdo, 'usp_privacy_getResult', ['request_id' => $requestId, 'account_id' => $accountId])->fetchColumn();
         return $r !== false && $r !== null ? (string) $r : throw new ApiException(404, 'NOT_FOUND');
     }
 
     public function queue(string $status = ''): array
     {
-        $where = in_array($status, ['OPEN', 'IN_REVIEW', 'COMPLETED', 'REJECTED'], true) ? 'WHERE p.status = ' . $this->pdo->quote($status) : "WHERE p.status IN ('OPEN','IN_REVIEW')";
-        return $this->pdo->query("SELECT TOP (100) p.request_id, p.type, p.status, p.details, p.resolution_note, p.due_at, p.created_at, p.completed_at, p.account_id, a.email, a.full_name, CASE WHEN p.due_at < DATETRUNC(SECOND, SYSUTCDATETIME()) THEN 1 ELSE 0 END AS overdue
-                                    FROM privacy_request p JOIN account a ON a.account_id = p.account_id {$where} ORDER BY p.due_at")->fetchAll();
+        return Db::call($this->pdo, 'usp_privacy_queue', ['status' => in_array($status, ['OPEN', 'IN_REVIEW', 'COMPLETED', 'REJECTED'], true) ? $status : null])->fetchAll();
     }
 
     public function find(string $id): array
     {
-        $st = $this->pdo->prepare('SELECT p.*, a.email, a.full_name FROM privacy_request p JOIN account a ON a.account_id = p.account_id WHERE p.request_id = ?');
-        $st->execute([$id]);
-        return $st->fetch() ?: throw new ApiException(404, 'NOT_FOUND');
+        return Db::call($this->pdo, 'usp_privacy_get', ['request_id' => $id])->fetch() ?: throw new ApiException(404, 'NOT_FOUND');
     }
 
     public function startReview(array $actor, string $id, ?string $ip): void
     {
-        $st = $this->pdo->prepare("UPDATE privacy_request SET status = 'IN_REVIEW', handled_by = ? WHERE request_id = ? AND status = 'OPEN'");
-        $st->execute([$actor['accountId'], $id]);
-        if ($st->rowCount() === 0) {
+        if ((int) Db::call($this->pdo, 'usp_privacy_startReview', ['request_id' => $id, 'handled_by' => $actor['accountId']])->fetchColumn() === 0) {
             throw new ApiException(409, 'ILLEGAL_TRANSITION', 'This request is not open.');
         }
         Audit::record($this->pdo, $actor, 'privacy.review_started', 'privacy_request', $id, [], $ip);
@@ -96,9 +84,7 @@ final class Privacy
         if ($note === '') {
             throw new ApiException(422, 'INVALID_REQUEST', 'Explain the decision to the guest.');
         }
-        $st = $this->pdo->prepare("UPDATE privacy_request SET status = 'REJECTED', handled_by = ?, resolution_note = ?, completed_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE request_id = ? AND status IN ('OPEN','IN_REVIEW')");
-        $st->execute([$actor['accountId'], $note, $id]);
-        if ($st->rowCount() === 0) {
+        if ((int) Db::call($this->pdo, 'usp_privacy_reject', ['request_id' => $id, 'handled_by' => $actor['accountId'], 'note' => $note])->fetchColumn() === 0) {
             throw new ApiException(409, 'ILLEGAL_TRANSITION', 'This request is already closed.');
         }
         Audit::record($this->pdo, $actor, 'privacy.rejected', 'privacy_request', $id, [], $ip);
@@ -120,35 +106,29 @@ final class Privacy
             if (!is_array($c) || !isset($c['email'])) {
                 throw new ApiException(422, 'INVALID_REQUEST', 'This correction request has no new details.');
             }
-            $taken = $this->pdo->prepare('SELECT 1 FROM account WHERE email = ? AND account_id <> ?');
-            $taken->execute([$c['email'], $acc]);
-            if ($taken->fetchColumn() !== false) {
+            if (Db::call($this->pdo, 'usp_account_emailTaken', ['email' => $c['email'], 'account_id' => $acc])->fetchColumn() !== false) {
                 throw new ApiException(409, 'EMAIL_TAKEN', 'Another account already uses that email address.');
             }
             Peer::ok('portal', 'booking', 'POST', '/internal/privacy/correct', $actor, ['accountId' => $acc, 'fullName' => $c['fullName'], 'email' => $c['email'], 'phone' => $c['phone']]);
-            $this->pdo->prepare('UPDATE account SET full_name = ?, email = ?, phone = ? WHERE account_id = ?')->execute([$c['fullName'], $c['email'], $c['phone'], $acc]);
+            Db::call($this->pdo, 'usp_account_correct', ['account_id' => $acc, 'full_name' => $c['fullName'], 'email' => $c['email'], 'phone' => $c['phone']]);
         } else {
             Peer::ok('portal', 'booking', 'POST', '/internal/privacy/anonymize', $actor, ['accountId' => $acc]);   // 409 while a booking is still live
             Tx::run($this->pdo, function () use ($acc, $req): void {
-                $this->pdo->prepare('UPDATE email_log SET to_email = ?, body_html = ? WHERE to_email = ?')->execute(['deleted@deleted.invalid', '[removed on request]', $req['email']]);
-                $this->pdo->prepare("UPDATE account SET email = ?, full_name = 'Deleted guest', phone = '', password_hash = ?, active = 0, anonymized_at = DATETRUNC(SECOND, SYSUTCDATETIME()), marketing_consent = 0 WHERE account_id = ?")
-                    ->execute(['deleted-' . substr($acc, 0, 8) . '@deleted.invalid', password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT), $acc]);
-                $this->pdo->prepare("UPDATE privacy_request SET details = '[removed]' WHERE account_id = ? AND type = 'CORRECTION'")->execute([$acc]);
+                Db::call($this->pdo, 'usp_account_anonymize', [
+                    'account_id' => $acc, 'old_email' => $req['email'], 'new_email' => 'deleted-' . substr($acc, 0, 8) . '@deleted.invalid',
+                    'password_hash' => password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT),
+                ]);
             });
             $this->accounts->dropSessions($acc);
         }
-        $this->pdo->prepare("UPDATE privacy_request SET status = 'COMPLETED', handled_by = ?, resolution_note = ?, result = ?, completed_at = DATETRUNC(SECOND, SYSUTCDATETIME()) WHERE request_id = ?")
-            ->execute([$actor['accountId'], mb_substr(trim($note), 0, 400) ?: null, $result, $id]);
+        Db::call($this->pdo, 'usp_privacy_complete', ['request_id' => $id, 'handled_by' => $actor['accountId'], 'note' => mb_substr(trim($note), 0, 400) ?: null, 'result' => $result]);
         Audit::record($this->pdo, $actor, 'privacy.completed', 'privacy_request', $id, ['type' => $req['type']], $ip);
     }
 
     private function compileAccess(array $actor, string $accountId): array
     {
-        $a = $this->pdo->prepare('SELECT email, full_name, phone, marketing_consent, created_at, last_login_at FROM account WHERE account_id = ?');
-        $a->execute([$accountId]);
-        $acct = $a->fetch() ?: throw new ApiException(404, 'NOT_FOUND');
-        $mail = $this->pdo->prepare('SELECT template, subject, status, created_at FROM email_log WHERE to_email = ? ORDER BY created_at');
-        $mail->execute([$acct['email']]);
+        $acct = Db::call($this->pdo, 'usp_account_getExport', ['account_id' => $accountId])->fetch() ?: throw new ApiException(404, 'NOT_FOUND');
+        $mail = Db::call($this->pdo, 'usp_email_listFor', ['to_email' => $acct['email']]);
         $booking = Peer::ok('portal', 'booking', 'GET', '/internal/privacy/guest-data?accountId=' . $accountId, $actor);
         return ['generatedAt' => gmdate('c'), 'account' => $acct, 'guestRecord' => $booking['guest'], 'reservations' => $booking['reservations'], 'emailsSent' => $mail->fetchAll()];
     }

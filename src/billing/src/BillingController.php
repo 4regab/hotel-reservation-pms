@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Billing;
 
 use Lib\ApiException;
+use Lib\Db;
 use Lib\Http;
 use Lib\Idempotency;
 use Lib\Inbox;
@@ -41,8 +42,10 @@ final class BillingController
                 }
                 // The provider call happens with NO database transaction or lock open.
                 $co = $this->provider->createCheckout($rid, (int) $res['amountMinor'], (string) $res['currency'], 'MA Hotel stay ' . substr($rid, 0, 8));
-                $this->pdo->prepare("INSERT INTO checkout_session (session_id, reservation_id, amount_minor, currency, status, checkout_url, created_at) VALUES (?, ?, ?, ?, 'PENDING', ?, DATETRUNC(SECOND, SYSUTCDATETIME()))")
-                    ->execute([$co['sessionId'], $rid, (int) $res['amountMinor'], $res['currency'], $co['checkoutUrl']]);
+                Db::call($this->pdo, 'usp_checkout_createSession', [
+                    'session_id' => $co['sessionId'], 'reservation_id' => $rid, 'amount_minor' => (int) $res['amountMinor'],
+                    'currency' => $res['currency'], 'checkout_url' => $co['checkoutUrl'],
+                ]);
                 return [201, ['reservationId' => $rid, 'sessionId' => $co['sessionId'], 'checkoutUrl' => $co['checkoutUrl'], 'amountMinor' => (int) $res['amountMinor'], 'currency' => $res['currency']]];
             },
             $now
@@ -126,9 +129,7 @@ final class BillingController
             throw new ApiException(404, 'NOT_FOUND');
         }
         Rbac::require($user['role'], 'checkout.start');
-        $st = $this->pdo->prepare("SELECT reservation_id, amount_minor, currency FROM checkout_session WHERE session_id = ? AND status = 'PENDING'");
-        $st->execute([$sessionId]);
-        return $st->fetch() ?: throw new ApiException(404, 'NOT_FOUND', 'No pending checkout session');
+        return Db::call($this->pdo, 'usp_checkout_getPending', ['session_id' => $sessionId])->fetch() ?: throw new ApiException(404, 'NOT_FOUND', 'No pending checkout session');
     }
 
     public function folio(Request $r, array $p): array

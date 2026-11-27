@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Portal;
 
 use Lib\ApiException;
+use Lib\Db;
 use Lib\Log;
 use Lib\Peer;
 use Lib\Retry;
@@ -22,28 +23,26 @@ final class Notifications
     public static function queue(\PDO $pdo, string $type, ?string $reservationId, ?string $accountId = null, ?array $payload = null): string
     {
         $id = Uuid::v4();
-        $pdo->prepare("INSERT INTO notification_job (job_id, type, reservation_id, account_id, payload, status, attempts, next_attempt_at, created_at) VALUES (?, ?, ?, ?, ?, 'PENDING', 0, DATETRUNC(SECOND, SYSUTCDATETIME()), DATETRUNC(SECOND, SYSUTCDATETIME()))")
-            ->execute([$id, $type, $reservationId, $accountId, $payload === null ? null : json_encode($payload), ]);
+        Db::call($pdo, 'usp_notification_queue', ['job_id' => $id, 'type' => $type, 'reservation_id' => $reservationId, 'account_id' => $accountId, 'payload' => $payload === null ? null : json_encode($payload)]);
         return $id;
     }
 
     /** @return array{sent:int,failed:int} */
     public function run(int $limit = 50): array
     {
-        $jobs = $this->pdo->query("SELECT TOP (" . max(1, $limit) . ") job_id, type, reservation_id, account_id, payload, attempts FROM notification_job WHERE status = 'PENDING' AND (next_attempt_at IS NULL OR next_attempt_at <= DATETRUNC(SECOND, SYSUTCDATETIME())) ORDER BY created_at")->fetchAll();
+        $jobs = Db::call($this->pdo, 'usp_notification_listDue', ['limit' => max(1, $limit)])->fetchAll();
         $out = ['sent' => 0, 'failed' => 0];
         foreach ($jobs as $job) {
             try {
                 if ($this->mailer->alreadyDone($job['job_id']) || $this->process($job)) {
-                    $this->pdo->prepare("UPDATE notification_job SET status = 'SENT', sent_at = DATETRUNC(SECOND, SYSUTCDATETIME()), attempts = attempts + 1, last_error = NULL, payload = NULL WHERE job_id = ?")->execute([$job['job_id']]);
+                    Db::call($this->pdo, 'usp_notification_markSent', ['job_id' => $job['job_id']]);
                     $out['sent']++;
                 }
             } catch (ApiException $e) {
                 $attempts = (int) $job['attempts'] + 1;
                 $next = Retry::afterFailure($attempts);
                 $final = $next['status'] === 'REVIEW';
-                $this->pdo->prepare('UPDATE notification_job SET status = ?, attempts = ?, last_error = ?, next_attempt_at = DATEADD(SECOND, CAST(? AS INT), DATETRUNC(SECOND, SYSUTCDATETIME())) WHERE job_id = ?')
-                    ->execute([$final ? 'FAILED' : 'PENDING', $attempts, mb_substr($e->getMessage(), 0, 200), $next['delay'], $job['job_id']]);
+                Db::call($this->pdo, 'usp_notification_markFailed', ['job_id' => $job['job_id'], 'status' => $final ? 'FAILED' : 'PENDING', 'attempts' => $attempts, 'last_error' => mb_substr($e->getMessage(), 0, 200), 'delay_seconds' => $next['delay']]);
                 if ($final) {
                     $this->mailer->recordFailure($job['type'], '(see job)', $job['type'], $e->getMessage(), $job['job_id']);
                 }
@@ -59,9 +58,7 @@ final class Notifications
     {
         if ($job['type'] === 'EMAIL_PASSWORD_RESET') {
             $p = json_decode((string) $job['payload'], true) ?: [];
-            $a = $this->pdo->prepare('SELECT email, full_name FROM account WHERE account_id = ? AND active = 1');
-            $a->execute([$job['account_id']]);
-            $acc = $a->fetch();
+            $acc = Db::call($this->pdo, 'usp_auth_getActiveContact', ['account_id' => $job['account_id']])->fetch();
             if ($acc === false || !isset($p['token'])) {
                 return true;
             }

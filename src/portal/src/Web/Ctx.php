@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Portal\Web;
 
 use Lib\ApiException;
+use Lib\Db;
 use Lib\Peer;
 use Lib\Rbac;
 use Lib\Request;
@@ -70,9 +71,7 @@ final class Ctx
             return null;
         }
         if ($this->account === null) {
-            $st = $this->pdo->prepare('SELECT account_id, email, role, full_name, phone, marketing_consent FROM account WHERE account_id = ?');
-            $st->execute([$u['accountId']]);
-            $this->account = $st->fetch() ?: [];
+            $this->account = Db::call($this->pdo, 'usp_auth_getProfile', ['account_id' => $u['accountId']])->fetch() ?: [];
         }
         return $this->account ?: null;
     }

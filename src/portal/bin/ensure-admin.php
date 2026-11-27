@@ -15,7 +15,7 @@ $admin = (string) getenv('DB_ADMIN_USER') !== '' || (string) getenv('DB_ADMIN_HO
 $pdo = new PDO(Lib\Db::dsn(getenv('DB_ADMIN_HOST') ?: getenv('PORTAL_DB_HOST') ?: '127.0.0.1', getenv('DB_ADMIN_PORT') ?: getenv('PORTAL_DB_PORT') ?: '1433', (string) $name),
     (string) getenv($admin ? 'DB_ADMIN_USER' : 'PORTAL_DB_USER'), (string) getenv($admin ? 'DB_ADMIN_PASS' : 'PORTAL_DB_PASS'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 
-if ((int) $pdo->query("SELECT COUNT(*) FROM account WHERE role = 'it' AND active = 1")->fetchColumn() > 0) {
+if ((int) Lib\Db::call($pdo, 'usp_account_countActiveIt')->fetchColumn() > 0) {
     echo "an IT account already exists\n";
     exit(0);
 }
@@ -36,9 +36,11 @@ if ($secret === '') {
     $generated[] = "authenticator secret: {$secret}";
 }
 $id = Lib\Uuid::v4();
-$pdo->prepare("INSERT INTO account (account_id, email, password_hash, role, full_name, phone, totp_secret, created_at) VALUES (?, ?, ?, 'it', ?, '', ?, DATETRUNC(SECOND, SYSUTCDATETIME()))")
-    ->execute([$id, $email, password_hash($password, PASSWORD_DEFAULT), (string) (getenv('ADMIN_NAME') ?: 'Site administrator'), $secret]);
-$pdo->prepare("INSERT INTO audit_log (at, actor_id, actor_role, action, target_type, target_id, detail, ip) VALUES (SYSUTCDATETIME(), 'system', 'it', 'user.created', 'account', ?, ?, NULL)")->execute([$id, json_encode(['role' => 'it', 'by' => 'ensure-admin'])]);
+Lib\Db::call($pdo, 'usp_account_createAdmin', [
+    'account_id' => $id, 'email' => $email, 'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+    'full_name' => (string) (getenv('ADMIN_NAME') ?: 'Site administrator'), 'totp_secret' => $secret,
+    'detail' => json_encode(['role' => 'it', 'by' => 'ensure-admin']),
+]);
 echo "created IT account {$email}\n";
 foreach ($generated as $line) {
     echo "  {$line}   (shown once)\n";

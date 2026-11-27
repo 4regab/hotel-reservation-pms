@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Portal;
 
 use Lib\ApiException;
+use Lib\Db;
 use Lib\Http;
 use Lib\Log;
 use Lib\Uuid;
@@ -63,14 +64,11 @@ final class Mailer
 
     public function alreadyDone(string $jobId): bool
     {
-        $st = $this->pdo->prepare("SELECT TOP (1) 1 FROM email_log WHERE job_id = ? AND status IN ('SENT','LOGGED')");
-        $st->execute([$jobId]);
-        return $st->fetchColumn() !== false;
+        return Db::call($this->pdo, 'usp_emailLog_isDone', ['job_id' => $jobId])->fetchColumn() !== false;
     }
 
     private function record(string $template, string $to, string $subject, string $html, string $status, ?string $providerId, ?string $error, ?string $jobId): void
     {
-        $this->pdo->prepare('INSERT INTO email_log (email_id, template, to_email, subject, body_html, status, provider_id, error, job_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATETRUNC(SECOND, SYSUTCDATETIME()))')
-            ->execute([Uuid::v4(), $template, $to, $subject, $html, $status, $providerId, $error, $jobId]);
+        Db::call($this->pdo, 'usp_emailLog_insert', ['email_id' => Uuid::v4(), 'template' => $template, 'to_email' => $to, 'subject' => $subject, 'body_html' => $html, 'status' => $status, 'provider_id' => $providerId, 'error' => $error, 'job_id' => $jobId]);
     }
 }

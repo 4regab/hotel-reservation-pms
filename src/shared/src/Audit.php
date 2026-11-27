@@ -13,34 +13,22 @@ final class Audit
     /** @param array{accountId:string,role:string} $user */
     public static function record(\PDO $pdo, array $user, string $action, string $targetType, string $targetId, array $detail = [], ?string $ip = null): void
     {
-        $pdo->prepare('INSERT INTO audit_log (at, actor_id, actor_role, action, target_type, target_id, detail, ip) VALUES (SYSUTCDATETIME(), ?, ?, ?, ?, ?, ?, ?)')
-            ->execute([$user['accountId'], $user['role'], $action, $targetType, $targetId, $detail === [] ? null : json_encode(Pii::scrub($detail), JSON_UNESCAPED_SLASHES), $ip]);
+        Db::call($pdo, 'usp_audit_write', [
+            'actor_id' => $user['accountId'], 'actor_role' => $user['role'], 'action' => $action, 'target_type' => $targetType, 'target_id' => $targetId,
+            'detail' => $detail === [] ? null : json_encode(Pii::scrub($detail), JSON_UNESCAPED_SLASHES), 'ip' => $ip,
+        ]);
     }
 
     /** @return list<array> newest first. Filters: action (prefix), actor, from, to (dates, UTC). */
     public static function search(\PDO $pdo, array $f, int $limit = 100): array
     {
-        $where = ['1=1'];
-        $args = [];
-        if (!empty($f['action'])) {
-            $where[] = "action LIKE ? ESCAPE '\\'";
-            $args[] = str_replace(['%', '_'], ['\\%', '\\_'], (string) $f['action']) . '%';
-        }
-        if (!empty($f['actor'])) {
-            $where[] = 'actor_id = ?';
-            $args[] = (string) $f['actor'];
-        }
-        if (!empty($f['from']) && Dates::isDate((string) $f['from'])) {
-            $where[] = 'at >= ?';
-            $args[] = $f['from'] . ' 00:00:00';
-        }
-        if (!empty($f['to']) && Dates::isDate((string) $f['to'])) {
-            $where[] = 'at < DATEADD(DAY, 1, CAST(? AS DATE))';
-            $args[] = $f['to'];
-        }
-        $limit = max(1, min(500, $limit));
-        $st = $pdo->prepare('SELECT audit_id AS auditId, at, actor_id AS actorId, actor_role AS actorRole, action, target_type AS targetType, target_id AS targetId, detail, ip FROM audit_log WHERE ' . implode(' AND ', $where) . " ORDER BY audit_id DESC OFFSET 0 ROWS FETCH NEXT {$limit} ROWS ONLY");
-        $st->execute($args);
+        $st = Db::call($pdo, 'usp_audit_search', [
+            'action_prefix' => !empty($f['action']) ? (string) $f['action'] : null,
+            'actor' => !empty($f['actor']) ? (string) $f['actor'] : null,
+            'from_date' => !empty($f['from']) && Dates::isDate((string) $f['from']) ? (string) $f['from'] : null,
+            'to_date' => !empty($f['to']) && Dates::isDate((string) $f['to']) ? (string) $f['to'] : null,
+            'row_limit' => max(1, min(500, $limit)),
+        ]);
         // audit_id is BIGINT, which the driver returns as a string; the API has always returned a number.
         return array_map(static fn (array $r): array => ['auditId' => (int) $r['auditId']] + $r, $st->fetchAll());
     }
@@ -48,10 +36,8 @@ final class Audit
     /** Outbox health for the IT page: delivery counts and the oldest stuck rows. */
     public static function outboxHealth(\PDO $pdo): array
     {
-        $counts = $pdo->query('SELECT status, COUNT(*) AS n FROM outbox_delivery GROUP BY status')->fetchAll(\PDO::FETCH_KEY_PAIR);
-        $stuck = $pdo->query("SELECT d.event_id AS eventId, d.handler_name AS handler, d.status, d.attempt_count AS attempts, d.last_error AS lastError, o.event_type AS eventType, o.created_at AS createdAt
-                                FROM outbox_delivery d JOIN outbox o ON o.event_id = d.event_id
-                               WHERE d.status <> 'DELIVERED' ORDER BY o.created_at OFFSET 0 ROWS FETCH NEXT 20 ROWS ONLY")->fetchAll();
+        $counts = Db::call($pdo, 'usp_outbox_counts')->fetchAll(\PDO::FETCH_KEY_PAIR);
+        $stuck = Db::call($pdo, 'usp_outbox_stuck', ['row_limit' => 20])->fetchAll();
         return ['pending' => (int) ($counts['PENDING'] ?? 0), 'review' => (int) ($counts['REVIEW'] ?? 0), 'delivered' => (int) ($counts['DELIVERED'] ?? 0), 'stuck' => $stuck];
     }
 }

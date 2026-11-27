@@ -5,6 +5,7 @@ namespace Portal;
 
 use Lib\ApiException;
 use Lib\Dates;
+use Lib\Db;
 use Lib\Inbox;
 use Lib\Request;
 use Lib\ServiceAuth;
@@ -60,9 +61,6 @@ final class EventConsumer
         if (!in_array($column, self::COLUMNS, true)) {
             throw new \InvalidArgumentException('unknown report column');
         }
-        $this->pdo->prepare("MERGE report_daily WITH (HOLDLOCK) AS d USING (SELECT CAST(? AS DATE) AS day, CAST(? AS BIGINT) AS amount) AS s ON d.day = s.day
-                             WHEN MATCHED THEN UPDATE SET [{$column}] = d.[{$column}] + s.amount, updated_at = DATETRUNC(SECOND, SYSUTCDATETIME())
-                             WHEN NOT MATCHED THEN INSERT (day, [{$column}], updated_at) VALUES (s.day, s.amount, DATETRUNC(SECOND, SYSUTCDATETIME()));")
-            ->execute([Dates::manilaToday(), $amount]);
+        Db::call($this->pdo, 'usp_reportDaily_add', ['day' => Dates::manilaToday(), $column => $amount]);
     }
 }
